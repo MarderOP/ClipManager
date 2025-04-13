@@ -1,0 +1,119 @@
+<Window
+    x:Class="Clip.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Clip"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Clip">
+
+    <Grid x:Name="Body" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Height="auto">
+        
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header Panel -->
+        <StackPanel x:Name="Header" Grid.Row="0" Background="Aqua">
+            <TextBlock>Header</TextBlock>
+        </StackPanel>
+        
+        
+        
+        <Grid x:Name="BodyContent" Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="0.15*" />
+                <ColumnDefinition Width="0.7*" />
+                <ColumnDefinition Width="0.15*" />
+            </Grid.ColumnDefinitions>
+
+
+            <!-- Left Panel -->
+            <StackPanel x:Name="LeftPanel" Grid.Column="0" Background="LightBlue">
+                <TextBlock>All clips Structure from stream</TextBlock>
+                <Button Content="Create Folder" Click="CreateFolder_Click"/>
+                <Button Content="Create Timestamp" Click="CreateTimestamp_Click"/>
+                <Button Content="Create Compilation" Click="CreateCompilation_Click"/>
+                <TreeView x:Name="FolderTreeView" ItemInvoked="FolderTreeView_ItemInvoked" Margin="10" Width="250" SelectionMode="Single"/>
+            </StackPanel>
+
+
+
+            <!-- Main Panel -->
+            <StackPanel x:Name="MainPanel" Grid.Column="1" Background="Blue" Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel x:Name="VideoPanel" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                    <Button x:Name="LoadVideoButton" Click="LoadVideoHandle" Content="Click Me to Load Video" HorizontalAlignment="Center" VerticalAlignment="Top" />
+                    <MediaPlayerElement x:Name="VideoPlayback"  HorizontalAlignment="Stretch"  VerticalAlignment="Stretch" Width="Auto" Height="Auto" />
+                </StackPanel>
+
+                <!-- Video Time Manipulation -->
+                <Grid x:Name="VideoManipulation">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="0.2*" />
+                        <ColumnDefinition Width="0.6*" />
+                        <ColumnDefinition Width="0.2*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                        <TextBlock x:Name="Timeline">xx:xx:xx - xx:xx:xx</TextBlock>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                        <Button Click="BackwardsButton_Click">Backwards</Button>
+                        <Button Click="PauseButton_Click">Pause</Button>
+                        <Button Click="ForwardsButton_Click">Forwards</Button>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                        <TextBox x:Name="TimeChange" PlaceholderText="10s (default)" LostFocus="TimeChange_LostFocus"/>
+                    </StackPanel>
+                </Grid>
+
+                <!--Clip Functionality-->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="0.2*" />
+                        <ColumnDefinition Width="0.3*" />
+                        <ColumnDefinition Width="0.3*" />
+                        <ColumnDefinition Width="0.2*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" Grid.Column="1">
+                        <Button Click="ChangeBeginTimeBackward">Backwards</Button>
+                        <TextBox x:Name="BeginTimeInput" Width="200" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="10" PlaceholderText="Begin (HH:MM:SS)" />
+                        <Button Click="ChangeBeginTimeForward">Forwards</Button>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal"  Grid.Column="2">
+                        <Button Click="ChangeEndTimeBackward">Backwards</Button>
+                        <TextBox x:Name="EndTimeInput" Width="200" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="10" PlaceholderText="Begin (HH:MM:SS)" />
+                        <Button Click="ChangeEndTimeForward">Forwards</Button>
+                    </StackPanel>
+                    <StackPanel Grid.Column="3" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
+                        <TextBox x:Name="TimestampChange" PlaceholderText="10s (default)" LostFocus="TimestampChange_LostFocus"/>
+                    </StackPanel>
+                </Grid>
+                <StackPanel>
+                    <Button x:Name="PlayTimestamp" Click="PlayButton_Click" Content="Play selected Timestamp" HorizontalAlignment="Center" VerticalAlignment="Top" />
+                    <Button x:Name="SaveTimestamp" Click="SaveTimestamp_Click" Content="Save Selected Timestamp" HorizontalAlignment="Center" VerticalAlignment="Top" />
+                    <TextBlock x:Name="UpdateConfirmationText" 
+           HorizontalAlignment="Center" 
+           VerticalAlignment="Top" 
+           Foreground="Green" 
+           Visibility="Collapsed" 
+           Text="Timestamp updated successfully!" />
+                </StackPanel>
+
+
+            
+
+            </StackPanel>
+            <!-- Right Panel -->
+            <StackPanel x:Name="RightPanel" Grid.Column="2" Background="LightBlue">
+                <TextBlock>JSON content preview:</TextBlock>
+                <Button Click="ExportJsonButton_Click">Export JSON</Button>
+                <Button>Import JSON</Button>
+                <TextBlock x:Name="JsonPreview"></TextBlock>
+            </StackPanel>
+            
+            
+        </Grid>
+    </Grid>
+</Window>
