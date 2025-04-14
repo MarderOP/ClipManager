@@ -127,8 +127,6 @@ namespace Clip
                 _appWindow.SetPresenter(AppWindowPresenterKind.FullScreen); 
             }
         }
-
-
         private string ExportTreeToJson()
         {
             var result = new Dictionary<string, object>();
