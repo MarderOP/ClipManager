@@ -17,6 +17,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using Microsoft.UI;
+using System.IO;
 namespace Clip
 {
     public sealed partial class MainWindow : Window
@@ -40,21 +41,167 @@ namespace Clip
             timelineTimer.Start();
             Body.KeyDown += Window_KeyDown;
         }
+
+
+        private async Task ExportClipsFromJsonAsync(string json)
+        {
+            Debug.WriteLine("Starting ExportClipsFromJsonAsync...");
+
+            string videoPath = videoFile?.Path;
+            if (string.IsNullOrEmpty(videoPath))
+            {
+                Debug.WriteLine("No video loaded. videoFile.Path is null or empty.");
+                return;
+            }
+
+            Debug.WriteLine($"Video path: {videoPath}");
+
+            string downloadsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+            string clipsRootPath = Path.Combine(downloadsPath, "Clips");
+            Directory.CreateDirectory(clipsRootPath);
+            Debug.WriteLine($"Clips root directory created at: {clipsRootPath}");
+            try
+            {
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string backupJsonPath = Path.Combine(downloadsPath, $"clips_backup_{timestamp}.json");
+                await File.WriteAllTextAsync(backupJsonPath, json);
+                Debug.WriteLine($"Backup JSON saved at: {backupJsonPath}");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to save backup JSON: {ex.Message}");
+            }
+            using JsonDocument doc = JsonDocument.Parse(json);
+            foreach (var folder in doc.RootElement.EnumerateObject())
+            {
+                string folderName = SanitizeFileName(folder.Name);
+                string folderPath = Path.Combine(clipsRootPath, folderName);
+                Directory.CreateDirectory(folderPath);
+                Debug.WriteLine($"Processing folder: {folderName} at path: {folderPath}");
+
+                foreach (var item in folder.Value.EnumerateObject())
+                {
+                    var value = item.Value;
+                    Debug.WriteLine($"  Checking item: {item.Name}");
+
+                    if (value.ValueKind == JsonValueKind.Object && value.TryGetProperty("begin", out _))
+                    {
+                        Debug.WriteLine($"    Detected regular clip: {item.Name}");
+                        await ExtractClipAsync(videoPath, folderPath, item.Name, value);
+                    }
+                    else if (value.ValueKind == JsonValueKind.Object)
+                    {
+                        Debug.WriteLine($"    Detected compilation: {item.Name}");
+                        string compilationName = SanitizeFileName(item.Name);
+                        string compilationPath = Path.Combine(folderPath, compilationName);
+                        Directory.CreateDirectory(compilationPath);
+                        Debug.WriteLine($"    Created compilation folder: {compilationPath}");
+
+                        foreach (var subItem in value.EnumerateObject())
+                        {
+                            Debug.WriteLine($"      Sub-clip: {subItem.Name}");
+                            await ExtractClipAsync(videoPath, compilationPath, subItem.Name, subItem.Value);
+                        }
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"    Skipped unknown value kind for item: {item.Name}");
+                    }
+                }
+            }
+
+            Debug.WriteLine("All clips exported.");
+        }
+
+
+
+        private async Task ExtractClipAsync(string videoPath, string outputFolder, string title, JsonElement clipData)
+        {
+            string? begin = clipData.GetProperty("begin").GetString();
+            string? end = clipData.GetProperty("end").GetString();
+
+            // Preprocess the times to ensure they are in a format that TimeSpan can handle
+            if (!TryParseTime(begin, out var startTime) || !TryParseTime(end, out var endTime))
+            {
+                Debug.WriteLine($"    Invalid time format: {begin} or {end}");
+                return;
+            }
+
+            Debug.WriteLine($"  Extracting clip: {title}");
+            Debug.WriteLine($"    Begin: {startTime}, End: {endTime}");
+
+            string safeTitle = SanitizeFileName(title);
+            string outputFile = Path.Combine(outputFolder, $"{safeTitle}.mp4");
+
+            Debug.WriteLine($"    Output path: {outputFile}");
+            string ffmpegPath = "ffmpeg";
+            double duration = (endTime - startTime).TotalSeconds;
+            string arguments = $"-y -ss {startTime.TotalSeconds} -i \"{videoPath}\" -t {duration} " +
+                   "-c:v copy -c:a copy " +
+                   $"\"{outputFile}\"";
+
+
+
+            Debug.WriteLine($"    FFmpeg command: {ffmpegPath} {arguments}");
+
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = ffmpegPath,
+                Arguments = arguments,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(psi);
+            string errorOutput = await process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+
+            Debug.WriteLine($"    FFmpeg exited with code {process.ExitCode}");
+            if (!string.IsNullOrEmpty(errorOutput))
+            {
+                Debug.WriteLine($"    FFmpeg stderr: {errorOutput}");
+            }
+
+            if (process.ExitCode == 0)
+            {
+                Debug.WriteLine($"    Successfully exported: {outputFile}");
+            }
+            else
+            {
+                Debug.WriteLine($"    Failed to export: {outputFile}");
+            }
+        }
+
+
+
+
+        private string SanitizeFileName(string name)
+        {
+            foreach (var c in Path.GetInvalidFileNameChars())
+            {
+                name = name.Replace(c, '_');
+            }
+            return name;
+        }
+
+
+
         private void Window_KeyDown(object sender, KeyRoutedEventArgs e)
         {
             switch (e.Key)
             {
                 case VirtualKey.A:
-                case VirtualKey.GamepadDPadLeft:
                     BackwardsButton_Click(sender, e);
                     break;
-
                 case VirtualKey.D:
-                case VirtualKey.GamepadDPadRight:
                     ForwardsButton_Click(sender, e);
                     break;
-
                 case VirtualKey.Space:
+                    PauseButton_Click(sender, e);
+                    break;
                 case VirtualKey.P:
                     PauseButton_Click(sender, e);
                     break;
@@ -74,24 +221,23 @@ namespace Clip
             {
                 LeftPanel.Visibility = Visibility.Visible;
                 RightPanel.Visibility = Visibility.Visible;
-                Header.Visibility = Visibility.Visible;
+                //Header.Visibility = Visibility.Visible;
                 VideoPlayback.HorizontalAlignment = HorizontalAlignment.Stretch;
                 VideoPlayback.VerticalAlignment = VerticalAlignment.Stretch;
                 VideoPlayback.Width = double.NaN;
                 VideoPlayback.Height = double.NaN;
                 MainPanel.HorizontalAlignment = HorizontalAlignment.Center;
                 MainPanel.VerticalAlignment = VerticalAlignment.Center;
-                BodyContent.ColumnDefinitions[1].Width = new GridLength(0.7, GridUnitType.Star);  
-                BodyContent.ColumnDefinitions[0].Width = new GridLength(0.15, GridUnitType.Star); 
-                BodyContent.ColumnDefinitions[2].Width = new GridLength(0.15, GridUnitType.Star);
-
+                BodyContent.ColumnDefinitions[1].Width = new GridLength(0.75, GridUnitType.Star);  
+                BodyContent.ColumnDefinitions[0].Width = new GridLength(0.20, GridUnitType.Star); 
+                BodyContent.ColumnDefinitions[2].Width = new GridLength(0.05, GridUnitType.Star);
                 isFullscreen = false;
             }
             else
             {
                 LeftPanel.Visibility = Visibility.Collapsed;
                 RightPanel.Visibility = Visibility.Collapsed;
-                Header.Visibility = Visibility.Collapsed;
+                //Header.Visibility = Visibility.Collapsed;
                 BodyContent.ColumnDefinitions[0].Width = new GridLength(0); 
                 BodyContent.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star); 
                 BodyContent.ColumnDefinitions[2].Width = new GridLength(0);  
@@ -118,11 +264,21 @@ namespace Clip
             var _appWindow = GetAppWindowForCurrentWindow();
             if (_appWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen)
             {
-                _appWindow.SetPresenter(AppWindowPresenterKind.Default); 
+                _appWindow.SetPresenter(AppWindowPresenterKind.Default);
+                if (isFullscreen)
+                {
+                    ToggleFullscreen();
+                    ToggleFullscreen();
+                }
             }
             else
             {
-                _appWindow.SetPresenter(AppWindowPresenterKind.FullScreen); 
+                _appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+                if (isFullscreen)
+                {
+                    ToggleFullscreen();
+                    ToggleFullscreen();
+                }
             }
         }
         private string ExportTreeToJson()
@@ -191,9 +347,10 @@ namespace Clip
             Debug.WriteLine("Final JSON:\n" + json);
             return json;
         }
-        private void ExportJsonButton_Click(object sender, RoutedEventArgs e)
+        private async void ExportJsonButton_Click(object sender, RoutedEventArgs e)
         {
-            ExportTreeToJson();
+            string json = ExportTreeToJson();
+            await ExportClipsFromJsonAsync(json);
         }
 
         public class Folder
@@ -208,11 +365,6 @@ namespace Clip
             public string Title { get; set; }
             public string Begin { get; set; }
             public string End { get; set; }
-
-            public override string ToString()
-            {
-                return Title;
-            }
         }
 
         public Dictionary<string, Folder> Folders { get; set; } = new Dictionary<string, Folder>();
@@ -234,7 +386,7 @@ namespace Clip
                     break;
                 }
             }
-        }
+        } 
         private Clip FindClipRecursive(Folder folder, string title)
         {
             var match = folder.Clips.FirstOrDefault(c => c.Title.StartsWith(title));
@@ -403,8 +555,6 @@ namespace Clip
             }
 
             string target = targetCombo.SelectedItem.ToString();
-
-            // Step 3: Enter Timestamp Title
             var nameDialog = new ContentDialog
             {
                 Title = "Enter Timestamp Title",
@@ -422,12 +572,9 @@ namespace Clip
                 await ShowInfoDialog("Invalid Title", "Timestamp title cannot be empty.");
                 return;
             }
-
             string title = inputBox.Text.Trim();
             string begin = "0:00";
             string end = SecondsToTimeFormat((int)videoDurationInSeconds);
-
-            // Step 4: Check for duplicates and create
             if (target == "<Main Folder>")
             {
                 if (Folders[selectedFolder].Clips.Any(c => c.Title.Equals(title, StringComparison.OrdinalIgnoreCase)))
@@ -528,6 +675,273 @@ namespace Clip
             Folders[selectedFolder].SubFolders.Add(new Folder { Name = compilationName });
             UpdateFolderList();
         }
+
+        private async Task DeleteFolder()
+        {
+            var folderNames = Folders.Keys.ToList();
+            if (folderNames.Count == 0)
+            {
+                await ShowInfoDialog("No Folders", "Create a folder first before deleting one.");
+                return;
+            }
+
+            var folderDialog = new ContentDialog
+            {
+                Title = "Select Folder to Delete",
+                PrimaryButtonText = "Next",
+                CloseButtonText = "Cancel"
+            };
+
+            var folderCombo = new ComboBox { ItemsSource = folderNames, PlaceholderText = "Select folder" };
+            folderDialog.Content = folderCombo;
+            folderDialog.XamlRoot = this.Content.XamlRoot;
+            
+            var folderResult = await folderDialog.ShowAsync();
+            if (folderResult != ContentDialogResult.Primary || folderCombo.SelectedItem == null)
+            {
+                await ShowInfoDialog("No Folder Selected", "Please select a folder.");
+                return;
+            }
+
+            string selectedFolder = folderCombo.SelectedItem.ToString();
+            var confirmationDialog = new ContentDialog
+            {
+                Title = "Delete Folder",
+                Content = $"Are you sure you want to delete the folder \"{selectedFolder}\"?",
+                PrimaryButtonText = "Delete",
+                SecondaryButtonText = "Cancel"
+            };
+            confirmationDialog.XamlRoot = this.Content.XamlRoot;
+            var confirmResult = await confirmationDialog.ShowAsync();
+            if (confirmResult == ContentDialogResult.Primary)
+            {
+                // Remove folder
+                Folders.Remove(selectedFolder);
+                UpdateFolderList(); 
+            }
+        }
+        private async Task DeleteCompilation()
+        {
+            var folderNames = Folders.Keys.ToList();
+            if (folderNames.Count == 0)
+            {
+                await ShowInfoDialog("No Folders", "Create a folder first before deleting a compilation.");
+                return;
+            }
+
+            var folderDialog = new ContentDialog
+            {
+                Title = "Select Folder",
+                PrimaryButtonText = "Next",
+                CloseButtonText = "Cancel"
+            };
+
+            var folderCombo = new ComboBox { ItemsSource = folderNames, PlaceholderText = "Select folder" };
+            folderDialog.Content = folderCombo;
+            folderDialog.XamlRoot = this.Content.XamlRoot;
+
+            var folderResult = await folderDialog.ShowAsync();
+            if (folderResult != ContentDialogResult.Primary || folderCombo.SelectedItem == null)
+            {
+                await ShowInfoDialog("No Folder Selected", "Please select a folder.");
+                return;
+            }
+
+            string selectedFolder = folderCombo.SelectedItem.ToString();
+            var compilations = Folders[selectedFolder].SubFolders.Select(f => f.Name).ToList();
+
+            if (compilations.Count == 0)
+            {
+                await ShowInfoDialog("No Compilations", "There are no compilations in this folder.");
+                return;
+            }
+
+            var compilationDialog = new ContentDialog
+            {
+                Title = "Select Compilation to Delete",
+                PrimaryButtonText = "Next",
+                CloseButtonText = "Cancel"
+            };
+            compilationDialog.XamlRoot = this.Content.XamlRoot;
+            var compilationCombo = new ComboBox { ItemsSource = compilations, PlaceholderText = "Select compilation" };
+            compilationDialog.Content = compilationCombo;
+            compilationDialog.XamlRoot = this.Content.XamlRoot;
+
+            var compilationResult = await compilationDialog.ShowAsync();
+            if (compilationResult != ContentDialogResult.Primary || compilationCombo.SelectedItem == null)
+            {
+                await ShowInfoDialog("No Compilation Selected", "Please select a compilation.");
+                return;
+            }
+            string selectedCompilation = compilationCombo.SelectedItem.ToString();
+            var confirmDialog = new ContentDialog
+            {
+                Title = "Delete Compilation",
+                Content = $"Are you sure you want to delete the compilation \"{selectedCompilation}\"?",
+                PrimaryButtonText = "Delete",
+                SecondaryButtonText = "Cancel"
+            };
+            confirmDialog.XamlRoot = this.Content.XamlRoot;
+            var confirmResult = await confirmDialog.ShowAsync();
+            if (confirmResult == ContentDialogResult.Primary)
+            {
+                var targetFolder = Folders[selectedFolder].SubFolders.FirstOrDefault(f => f.Name == selectedCompilation);
+                if (targetFolder != null)
+                {
+                    Folders[selectedFolder].SubFolders.Remove(targetFolder);
+                    UpdateFolderList();
+                }
+            }
+        }
+        private async Task DeleteTimestamp()
+        {
+            var folderNames = Folders.Keys.ToList();
+            if (folderNames.Count == 0)
+            {
+                await ShowInfoDialog("No Folders", "Create a folder first before deleting a timestamp.");
+                return;
+            }
+
+            var folderDialog = new ContentDialog
+            {
+                Title = "Select Folder",
+                PrimaryButtonText = "Next",
+                CloseButtonText = "Cancel"
+            };
+
+            var folderCombo = new ComboBox { ItemsSource = folderNames, PlaceholderText = "Select folder" };
+            folderDialog.Content = folderCombo;
+            folderDialog.XamlRoot = this.Content.XamlRoot;
+
+            var folderResult = await folderDialog.ShowAsync();
+            if (folderResult != ContentDialogResult.Primary || folderCombo.SelectedItem == null)
+            {
+                await ShowInfoDialog("No Folder Selected", "Please select a folder.");
+                return;
+            }
+
+            string selectedFolder = folderCombo.SelectedItem.ToString();
+            var options = new List<string> { "<Main Folder>" };
+            options.AddRange(Folders[selectedFolder].SubFolders.Select(f => f.Name));
+
+            var targetDialog = new ContentDialog
+            {
+                Title = "Select Timestamp Location",
+                PrimaryButtonText = "Next",
+                CloseButtonText = "Cancel"
+            };
+
+            var targetCombo = new ComboBox { ItemsSource = options, PlaceholderText = "Select folder or compilation" };
+            targetDialog.Content = targetCombo;
+            targetDialog.XamlRoot = this.Content.XamlRoot;
+
+            var targetResult = await targetDialog.ShowAsync();
+            if (targetResult != ContentDialogResult.Primary || targetCombo.SelectedItem == null)
+            {
+                await ShowInfoDialog("No Target Selected", "Please select a target location.");
+                return;
+            }
+
+            string target = targetCombo.SelectedItem.ToString();
+            var timestampDialog = new ContentDialog
+            {
+                Title = "Select Timestamp to Delete",
+                PrimaryButtonText = "Delete",
+                CloseButtonText = "Cancel"
+            };
+
+            var timestamps = target == "<Main Folder>" ? Folders[selectedFolder].Clips : Folders[selectedFolder].SubFolders.FirstOrDefault(f => f.Name == target)?.Clips ?? new List<Clip>();
+
+            if (timestamps.Count == 0)
+            {
+                await ShowInfoDialog("No Timestamps", "There are no timestamps in this location.");
+                return;
+            }
+
+            var timestampCombo = new ComboBox { ItemsSource = timestamps.Select(c => c.Title), PlaceholderText = "Select timestamp" };
+            timestampDialog.Content = timestampCombo;
+            timestampDialog.XamlRoot = this.Content.XamlRoot;
+
+            var timestampResult = await timestampDialog.ShowAsync();
+            if (timestampResult != ContentDialogResult.Primary || timestampCombo.SelectedItem == null)
+            {
+                await ShowInfoDialog("No Timestamp Selected", "Please select a timestamp.");
+                return;
+            }
+            string selectedTimestamp = timestampCombo.SelectedItem.ToString();
+            var confirmDialog = new ContentDialog
+            {
+                Title = "Delete Timestamp",
+                Content = $"Are you sure you want to delete the timestamp \"{selectedTimestamp}\"?",
+                PrimaryButtonText = "Delete",
+                SecondaryButtonText = "Cancel"
+            };
+            confirmDialog.XamlRoot = this.Content.XamlRoot;
+            var confirmResult = await confirmDialog.ShowAsync();
+            if (confirmResult == ContentDialogResult.Primary)
+            {
+                var targetFolder = Folders[selectedFolder];
+                var targetCompilation = target == "<Main Folder>" ? null : target;
+
+                if (targetCompilation == null)
+                {
+                    targetFolder.Clips.RemoveAll(c => c.Title == selectedTimestamp);
+                }
+                else
+                {
+                    var subFolder = targetFolder.SubFolders.FirstOrDefault(f => f.Name == targetCompilation);
+                    if (subFolder != null)
+                    {
+                        subFolder.Clips.RemoveAll(c => c.Title == selectedTimestamp);
+                    }
+                }
+
+                UpdateFolderList();
+            }
+        }
+
+        private async void DeleteButton_Click(object sender, RoutedEventArgs e)
+        {
+            var options = new List<string> { "Delete Folder", "Delete Compilation", "Delete Timestamp" };
+
+            var deleteDialog = new ContentDialog
+            {
+                Title = "Select Deletion Type",
+                PrimaryButtonText = "Next",
+                CloseButtonText = "Cancel"
+            };
+
+            var deleteCombo = new ComboBox { ItemsSource = options, PlaceholderText = "Select what to delete" };
+            deleteDialog.Content = deleteCombo;
+            deleteDialog.XamlRoot = this.Content.XamlRoot;
+
+            var result = await deleteDialog.ShowAsync();
+            if (result != ContentDialogResult.Primary || deleteCombo.SelectedItem == null)
+            {
+                await ShowInfoDialog("No Option Selected", "Please select what you want to delete.");
+                return;
+            }
+
+            string selectedOption = deleteCombo.SelectedItem.ToString();
+
+            // Delegate the logic based on selection
+            switch (selectedOption)
+            {
+                case "Delete Folder":
+                    await DeleteFolder();
+                    break;
+                case "Delete Compilation":
+                    await DeleteCompilation();
+                    break;
+                case "Delete Timestamp":
+                    await DeleteTimestamp();
+                    break;
+                default:
+                    await ShowInfoDialog("Invalid Option", "Please select a valid option.");
+                    break;
+            }
+        }
+
 
         private async void LoadVideoHandle(object sender, RoutedEventArgs e)
         {
@@ -705,9 +1119,17 @@ namespace Clip
 
             Debug.WriteLine($"Parsing time: {time}");
 
-            // Case 1: M:SS format (Minutes:Seconds)
+            // Case 1: M:SS format (Minutes:Seconds) - both parts should be present
             if (parts.Length == 2)
             {
+                if (parts[0].Length == 1) // This is for cases like M:SS (e.g., "1:30")
+                {
+                    // Prepend '00:' to make it 00:MM:SS
+                    time = "0:" + time;
+                    parts = time.Split(':');
+                }
+
+                // Now we have MM:SS or 00:MM:SS format
                 int minutes = int.Parse(parts[0]);
                 int seconds = int.Parse(parts[1]);
                 result = new TimeSpan(0, minutes, seconds);
@@ -715,17 +1137,7 @@ namespace Clip
                 return true;
             }
 
-            // Case 2: MM:SS format (Hours:Minutes)
-            if (parts.Length == 2 && parts[0].Length == 1)
-            {
-                int minutes = int.Parse(parts[0]);
-                int seconds = int.Parse(parts[1]);
-                result = new TimeSpan(0, minutes, seconds);
-                Debug.WriteLine($"Parsed time: {result}");
-                return true;
-            }
-
-            // Case 3: HH:MM:SS format (Hours:Minutes:Seconds)
+            // Case 2: HH:MM:SS format (Hours:Minutes:Seconds)
             if (parts.Length == 3)
             {
                 int hours = int.Parse(parts[0]);

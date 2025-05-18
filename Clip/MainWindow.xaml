@@ -7,7 +7,11 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
     Title="Clip">
-    <Grid x:Name="Body" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Height="auto">
+
+
+
+
+    <Grid x:Name="Body" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Height="auto" Background="#121212">
         
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -15,27 +19,27 @@
         </Grid.RowDefinitions>
 
         <!-- Header Panel -->
-        <StackPanel x:Name="Header" Grid.Row="0" Background="Aqua">
+        <StackPanel x:Name="Header" Grid.Row="0" Background="Aqua" Visibility="Collapsed">
             <TextBlock>Header</TextBlock>
         </StackPanel>
         
         
-        
         <Grid x:Name="BodyContent" Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="0.25*" />
-                <ColumnDefinition Width="0.7*" />
+                <ColumnDefinition Width="0.20*" />
+                <ColumnDefinition Width="0.75*" />
                 <ColumnDefinition Width="0.05*" />
             </Grid.ColumnDefinitions>
 
 
             <!-- Left Panel -->
-            <StackPanel x:Name="LeftPanel" Grid.Column="0" Background="#121212" Padding="16">
+            <StackPanel x:Name="LeftPanel" Grid.Column="0" Background="#2E2E2E" Padding="16">
                 <TextBlock Text="📁 All clips Structure from stream" FontSize="18" FontWeight="Bold" Foreground="#E0E0E0" Margin="0,0,0,12"/>
                 <StackPanel x:Name="LeftPanelContent" Visibility="Collapsed">
                     <Button Content="Create Folder" Click="CreateFolder_Click" Style="{StaticResource ButtonStyle}"/>
                     <Button Content="Create Timestamp" Click="CreateTimestamp_Click" Style="{StaticResource ButtonStyle}"/>
                     <Button Content="Create Compilation" Click="CreateCompilation_Click" Style="{StaticResource ButtonStyle}"/>
+                    <Button Content="Delete" Click="DeleteButton_Click" Style="{StaticResource ButtonStyle}"/>
                     <TreeView x:Name="FolderTreeView" ItemInvoked="FolderTreeView_ItemInvoked" Margin="10"  SelectionMode="Single" Background="#1F1F1F" BorderBrush="#333333" AllowDrop="False">
                         <TreeView.ItemTemplate>
                             <DataTemplate>
@@ -49,10 +53,11 @@
             </StackPanel>
 
             <!-- Main Panel -->
-            <StackPanel x:Name="MainPanel" Grid.Column="1" Background="Blue" Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <StackPanel x:Name="MainPanel" Grid.Column="1" Background="#121212" Orientation="Vertical" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="16">
+                <!-- Video Section -->
                 <StackPanel x:Name="VideoPanel" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-                    <Button x:Name="LoadVideoButton" Click="LoadVideoHandle" Content="Click Me to Load Video" HorizontalAlignment="Center" VerticalAlignment="Top" />
-                    <MediaPlayerElement x:Name="VideoPlayback"  HorizontalAlignment="Stretch"  VerticalAlignment="Stretch" Width="Auto" Height="Auto" />
+                    <Button x:Name="LoadVideoButton" Click="LoadVideoHandle" Content="Click Me to Load Video" HorizontalAlignment="Center" VerticalAlignment="Top" Style="{StaticResource ButtonStyle}" />
+                    <MediaPlayerElement x:Name="VideoPlayback" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Width="Auto" Height="Auto" />
                 </StackPanel>
 
                 <!-- Video Time Manipulation -->
@@ -62,20 +67,36 @@
                         <ColumnDefinition Width="0.6*" />
                         <ColumnDefinition Width="0.2*" />
                     </Grid.ColumnDefinitions>
+
                     <StackPanel Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
-                        <TextBlock x:Name="Timeline">xx:xx:xx - xx:xx:xx</TextBlock>
+                        <TextBlock x:Name="Timeline" Foreground="#E0E0E0" FontSize="14">xx:xx:xx - xx:xx:xx</TextBlock>
                     </StackPanel>
-                    <StackPanel  Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
-                        <Button Click="BackwardsButton_Click">Backwards</Button>
-                        <Button Click="PauseButton_Click">Pause</Button>
-                        <Button Click="ForwardsButton_Click">Forwards</Button>
+
+                    <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
+                        <Button Click="BackwardsButton_Click" Style="{StaticResource ButtonStyle}">
+                            
+                            <Button.Content>
+                                <Image Source="/Assets/Left.svg" Width="24" Height="24"/>
+                            </Button.Content>
+                        </Button>
+                        <Button Click="PauseButton_Click" Style="{StaticResource ButtonStyle}">
+                            <Button.Content>
+                                <Image Source="/Assets/Pause.svg" Width="24" Height="24"/>
+                            </Button.Content>
+                        </Button>
+                        <Button Click="ForwardsButton_Click" Style="{StaticResource ButtonStyle}">
+                            <Button.Content>
+                                <Image Source="/Assets/Right.svg" Width="24" Height="24"/>
+                            </Button.Content>
+                        </Button>
                     </StackPanel>
+
                     <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
-                        <TextBox x:Name="TimeChange" PlaceholderText="10s (default)" LostFocus="TimeChange_LostFocus"/>
+                        <TextBox x:Name="TimeChange" PlaceholderText="10s (default)" LostFocus="TimeChange_LostFocus" />
                     </StackPanel>
                 </Grid>
 
-                <!--Clip Functionality-->
+                <!-- Timestamp Manipulation -->
                 <Grid x:Name="TimestampManipulation" Visibility="Collapsed">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="0.2*" />
@@ -83,31 +104,50 @@
                         <ColumnDefinition Width="0.3*" />
                         <ColumnDefinition Width="0.2*" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal" Grid.Column="1">
-                        <Button Click="ChangeBeginTimeBackward">Backwards</Button>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Click="ChangeBeginTimeBackward" Style="{StaticResource ButtonStyle}">
+                            <Button.Content>
+                                <Image Source="/Assets/Left.svg" Width="24" Height="24"/>
+                            </Button.Content>
+                        </Button>
                         <TextBox x:Name="BeginTimeInput" Width="200" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="10" PlaceholderText="Begin (HH:MM:SS)" />
-                        <Button Click="ChangeBeginTimeForward">Forwards</Button>
+                        <Button Click="ChangeBeginTimeForward" Style="{StaticResource ButtonStyle}">
+                            <Button.Content>
+                                <Image Source="/Assets/Right.svg" Width="24" Height="24"/>
+                            </Button.Content>
+                        </Button>
                     </StackPanel>
-                    <StackPanel Orientation="Horizontal"  Grid.Column="2">
-                        <Button Click="ChangeEndTimeBackward">Backwards</Button>
-                        <TextBox x:Name="EndTimeInput" Width="200" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="10" PlaceholderText="Begin (HH:MM:SS)" />
-                        <Button Click="ChangeEndTimeForward">Forwards</Button>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <Button Click="ChangeEndTimeBackward" Style="{StaticResource ButtonStyle}">
+                            <Button.Content>
+                                <Image Source="/Assets/Left.svg" Width="24" Height="24"/>
+                            </Button.Content>
+                        </Button>
+                        <TextBox x:Name="EndTimeInput" Width="200" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="10" PlaceholderText="End (HH:MM:SS)"/>
+                        <Button Click="ChangeEndTimeForward" Style="{StaticResource ButtonStyle}">
+                            <Button.Content>
+                                <Image Source="/Assets/Right.svg" Width="24" Height="24"/>
+                            </Button.Content>
+                        </Button>
                     </StackPanel>
+
                     <StackPanel Grid.Column="3" HorizontalAlignment="Right" VerticalAlignment="Center" Orientation="Horizontal">
-                        <TextBox x:Name="TimestampChange" PlaceholderText="10s (default)" LostFocus="TimestampChange_LostFocus"/>
+                        <TextBox x:Name="TimestampChange" PlaceholderText="10s (default)" LostFocus="TimestampChange_LostFocus" />
                     </StackPanel>
                 </Grid>
+
+                <!-- Timestamp Action Buttons -->
                 <StackPanel x:Name="TimestampButtons" Visibility="Collapsed">
-                    <Button x:Name="PlayTimestamp" Click="PlayButton_Click" Content="Play selected Timestamp" HorizontalAlignment="Center" VerticalAlignment="Top" />
-                    <Button x:Name="SaveTimestamp" Click="SaveTimestamp_Click" Content="Save Selected Timestamp" HorizontalAlignment="Center" VerticalAlignment="Top" />
+                    <Button x:Name="PlayTimestamp" Click="PlayButton_Click" Content="Play selected Timestamp" HorizontalAlignment="Center" VerticalAlignment="Top" Style="{StaticResource ButtonStyle}" />
+                    <Button x:Name="SaveTimestamp" Click="SaveTimestamp_Click" Content="Save Selected Timestamp" HorizontalAlignment="Center" VerticalAlignment="Top" Style="{StaticResource ButtonStyle}" />
                 </StackPanel>
-
-
-            
-
             </StackPanel>
+
+
             <!-- Right Panel -->
-            <StackPanel x:Name="RightPanel" Grid.Column="2" Background="LightBlue">
+            <StackPanel x:Name="RightPanel" Grid.Column="2" Background="#2E2E2E">
                 <TextBlock>JSON content preview:</TextBlock>
                 <Button Click="ExportJsonButton_Click">Export JSON</Button>
                 <Button>Import JSON</Button>

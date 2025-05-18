@@ -12,6 +12,13 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+  <ItemGroup>
+    <Content Remove="Assets\download.svg" />
+    <Content Remove="Assets\Export.svg" />
+    <Content Remove="Assets\Left.svg" />
+    <Content Remove="Assets\Pause.svg" />
+    <Content Remove="Assets\Right.svg" />
+  </ItemGroup>
 
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />
