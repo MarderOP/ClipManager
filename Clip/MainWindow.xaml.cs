@@ -412,6 +412,22 @@ namespace Clip
                 await ShowInfoDialog("Invalid Time", "Please enter a valid time format and make sure the end time is after the start time.");
                 return;
             }
+            if (endTime.TotalSeconds - beginTime.TotalSeconds > 600)
+            {
+                var confirmationDialog = new ContentDialog
+                {
+                    Title = "Confirm Saving Long Clip",
+                    Content = "The selected clip is longer than 10 minutes. Are you sure you want to save it?",
+                    PrimaryButtonText = "Yes",
+                    CloseButtonText = "No"
+                };
+
+                var confirmationResult = await confirmationDialog.ShowAsync();
+                if (confirmationResult != ContentDialogResult.Primary)
+                {
+                    return;
+                }
+            }
 
             var selectedClip = selectedClipForEditing;
             string newBegin = BeginTimeInput.Text.Trim();
@@ -508,170 +524,211 @@ namespace Clip
 
         private async void CreateTimestamp_Click(object sender, RoutedEventArgs e)
         {
-            var folderNames = Folders.Keys.ToList();
-            if (folderNames.Count == 0)
+            if (Folders.Count == 0)
             {
-                await ShowInfoDialog("No Folders", "Create a folder first before adding a timestamp.");
+                await ShowInfoDialog("No Folders", "Create a folder first.");
                 return;
             }
 
-            var folderDialog = new ContentDialog
+            string selectedFolder = null;
+            if (Folders.Count > 1)
             {
-                Title = "Select Folder",
-                PrimaryButtonText = "Next",
-                CloseButtonText = "Cancel"
-            };
-
-            var folderCombo = new ComboBox { ItemsSource = folderNames, PlaceholderText = "Select folder" };
-            folderDialog.Content = folderCombo;
-            folderDialog.XamlRoot = this.Content.XamlRoot;
-
-            var folderResult = await folderDialog.ShowAsync();
-            if (folderResult != ContentDialogResult.Primary || folderCombo.SelectedItem == null)
-            {
-                await ShowInfoDialog("No Folder Selected", "Please select a folder.");
-                return;
-            }
-            string selectedFolder = folderCombo.SelectedItem.ToString();
-            var options = new List<string> { "<Main Folder>" };
-            options.AddRange(Folders[selectedFolder].SubFolders.Select(f => f.Name));
-
-            var targetDialog = new ContentDialog
-            {
-                Title = "Select Target",
-                PrimaryButtonText = "Next",
-                CloseButtonText = "Cancel"
-            };
-
-            var targetCombo = new ComboBox { ItemsSource = options, PlaceholderText = "Select target" };
-            targetDialog.Content = targetCombo;
-            targetDialog.XamlRoot = this.Content.XamlRoot;
-
-            var targetResult = await targetDialog.ShowAsync();
-            if (targetResult != ContentDialogResult.Primary || targetCombo.SelectedItem == null)
-            {
-                await ShowInfoDialog("No Target Selected", "Please select a target location.");
-                return;
-            }
-
-            string target = targetCombo.SelectedItem.ToString();
-            var nameDialog = new ContentDialog
-            {
-                Title = "Enter Timestamp Title",
-                PrimaryButtonText = "Create",
-                CloseButtonText = "Cancel"
-            };
-
-            var inputBox = new TextBox { PlaceholderText = "Enter title" };
-            nameDialog.Content = inputBox;
-            nameDialog.XamlRoot = this.Content.XamlRoot;
-
-            var nameResult = await nameDialog.ShowAsync();
-            if (nameResult != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(inputBox.Text))
-            {
-                await ShowInfoDialog("Invalid Title", "Timestamp title cannot be empty.");
-                return;
-            }
-            string title = inputBox.Text.Trim();
-            string begin = "0:00";
-            string end = SecondsToTimeFormat((int)videoDurationInSeconds);
-            if (target == "<Main Folder>")
-            {
-                if (Folders[selectedFolder].Clips.Any(c => c.Title.Equals(title, StringComparison.OrdinalIgnoreCase)))
+                var folderNames = Folders.Keys.ToList();
+                var folderDialog = new ContentDialog
                 {
-                    await ShowInfoDialog("Duplicate Timestamp", $"A timestamp named \"{title}\" already exists in \"{selectedFolder}\".");
-                    return;
-                }
+                    Title = "Select Folder",
+                    PrimaryButtonText = "OK",
+                    CloseButtonText = "Cancel",
+                    Content = new ComboBox
+                    {
+                        ItemsSource = folderNames,
+                        SelectedIndex = 0
+                    },
+                    XamlRoot = this.Content.XamlRoot
+                };
 
-                Folders[selectedFolder].Clips.Add(new Clip { Title = title, Begin = begin, End = end });
+                var result = await folderDialog.ShowAsync();
+                if (result != ContentDialogResult.Primary)
+                    return;
+
+                selectedFolder = ((ComboBox)folderDialog.Content).SelectedItem?.ToString();
             }
             else
             {
-                var targetSub = Folders[selectedFolder].SubFolders.FirstOrDefault(f => f.Name == target);
+                selectedFolder = Folders.Keys.First();
+            }
+
+            if (string.IsNullOrEmpty(selectedFolder))
+                return;
+
+            string selectedTarget = "<Main Folder>";
+            var folder = Folders[selectedFolder];
+            if (folder.SubFolders.Any())
+            {
+                var targets = new List<string> { "<Main Folder>" };
+                targets.AddRange(folder.SubFolders.Select(f => f.Name));
+
+                var targetDialog = new ContentDialog
+                {
+                    Title = "Select Target Location",
+                    PrimaryButtonText = "OK",
+                    CloseButtonText = "Cancel",
+                    Content = new ComboBox
+                    {
+                        ItemsSource = targets,
+                        SelectedIndex = 0
+                    },
+                    XamlRoot = this.Content.XamlRoot
+                };
+
+                var targetResult = await targetDialog.ShowAsync();
+                if (targetResult != ContentDialogResult.Primary)
+                    return;
+
+                selectedTarget = ((ComboBox)targetDialog.Content).SelectedItem?.ToString() ?? "<Main Folder>";
+            }
+
+            string title = null;
+            while (true)
+            {
+                var titleBox = new TextBox { PlaceholderText = "Enter title" };
+                var titleDialog = new ContentDialog
+                {
+                    Title = "Enter Timestamp Title",
+                    PrimaryButtonText = "Create",
+                    CloseButtonText = "Cancel",
+                    Content = titleBox,
+                    XamlRoot = this.Content.XamlRoot
+                };
+                var result = await titleDialog.ShowAsync();
+                if (result != ContentDialogResult.Primary)
+                    return;
+
+                title = titleBox.Text.Trim();
+
+                if (string.IsNullOrWhiteSpace(title))
+                {
+                    await ShowInfoDialog("Invalid Input", "Title cannot be empty.");
+                    continue;
+                }
+                if (!IsValidTitle(title))
+                {
+                    await ShowInfoDialog("Invalid Title", "Title can only contain letters, numbers, spaces, and underscores.");
+                    continue;
+                }
+
+                bool isDuplicate = false;
+                if (selectedTarget == "<Main Folder>")
+                {
+                    isDuplicate = folder.Clips.Any(c => c.Title.Equals(title, StringComparison.OrdinalIgnoreCase));
+                }
+                else
+                {
+                    var subFolder = folder.SubFolders.FirstOrDefault(f => f.Name == selectedTarget);
+                    if (subFolder != null)
+                        isDuplicate = subFolder.Clips.Any(c => c.Title.Equals(title, StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (isDuplicate)
+                {
+                    await ShowInfoDialog("Duplicate Timestamp", $"\"{title}\" already exists in \"{selectedTarget}\".");
+                    continue;
+                }
+
+                break;
+            }
+
+            string begin = "0:00";
+            string end = SecondsToTimeFormat((int)videoDurationInSeconds);
+
+            if (selectedTarget == "<Main Folder>")
+            {
+                folder.Clips.Add(new Clip { Title = title, Begin = begin, End = end });
+            }
+            else
+            {
+                var targetSub = folder.SubFolders.FirstOrDefault(f => f.Name == selectedTarget);
                 if (targetSub != null)
                 {
-                    if (targetSub.Clips.Any(c => c.Title.Equals(title, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        await ShowInfoDialog("Duplicate Timestamp", $"A timestamp named \"{title}\" already exists in \"{target}\".");
-                        return;
-                    }
-
                     targetSub.Clips.Add(new Clip { Title = title, Begin = begin, End = end });
                 }
                 else
                 {
-                    await ShowInfoDialog("Unexpected Error", "Could not find the selected subfolder.");
+                    await ShowInfoDialog("Error", "Subfolder not found.");
                     return;
                 }
             }
 
             UpdateFolderList();
         }
-
         private async void CreateCompilation_Click(object sender, RoutedEventArgs e)
         {
-            // Step 1: Ask for the compilation name
-            var inputDialog = new ContentDialog
+            if (Folders.Count == 0)
             {
-                Title = "Enter Compilation Name",
-                PrimaryButtonText = "Next",
-                CloseButtonText = "Cancel"
-            };
-
-            var inputBox = new TextBox { PlaceholderText = "Compilation name" };
-            inputDialog.Content = inputBox;
-            inputDialog.XamlRoot = this.Content.XamlRoot;
-
-            var inputResult = await inputDialog.ShowAsync();
-
-            if (inputResult != ContentDialogResult.Primary) return;
-
-            string compilationName = inputBox.Text.Trim();
-
-            if (string.IsNullOrWhiteSpace(compilationName))
-            {
-                await ShowInfoDialog("Invalid Name", "Compilation name cannot be empty.");
+                await ShowInfoDialog("No Folders Available", "Create a folder before adding a compilation.");
                 return;
             }
-
-            // Step 2: Ask the user to select the folder
-            var folderNames = Folders.Keys.ToList();
-            if (folderNames.Count == 0)
+            string selectedFolder = null;
+            if (Folders.Count > 1)
             {
-                await ShowInfoDialog("No Folders Available", "You need to create a folder before adding a compilation.");
-                return;
+                var folderDialog = new ContentDialog
+                {
+                    Title = "Select Folder for Compilation",
+                    PrimaryButtonText = "Next",
+                    CloseButtonText = "Cancel",
+                    Content = new ComboBox
+                    {
+                        ItemsSource = Folders.Keys.ToList(),
+                        SelectedIndex = 0
+                    },
+                    XamlRoot = this.Content.XamlRoot
+                };
+
+                var result = await folderDialog.ShowAsync();
+                if (result != ContentDialogResult.Primary)
+                    return;
+
+                selectedFolder = ((ComboBox)folderDialog.Content).SelectedItem?.ToString();
             }
-
-            var folderDialog = new ContentDialog
+            else
             {
-                Title = "Select Folder for Compilation",
-                PrimaryButtonText = "Create",
-                CloseButtonText = "Cancel"
-            };
-
-            var comboBox = new ComboBox { ItemsSource = folderNames, PlaceholderText = "Select a folder" };
-            folderDialog.Content = comboBox;
-            folderDialog.XamlRoot = this.Content.XamlRoot;
-
-            var folderResult = await folderDialog.ShowAsync();
-
-            if (folderResult != ContentDialogResult.Primary || comboBox.SelectedItem == null)
-            {
-                await ShowInfoDialog("No Folder Selected", "Please select a folder to place the compilation in.");
-                return;
+                selectedFolder = Folders.Keys.First();
             }
-
-            string selectedFolder = comboBox.SelectedItem.ToString();
-
-            // Step 3: Check for duplicate compilation names inside the folder
-            bool nameExists = Folders[selectedFolder].SubFolders.Any(sf => sf.Name.Equals(compilationName, StringComparison.OrdinalIgnoreCase));
-            if (nameExists)
-            {
-                await ShowInfoDialog("Duplicate Name", $"A compilation named \"{compilationName}\" already exists in \"{selectedFolder}\".");
+            if (string.IsNullOrEmpty(selectedFolder))
                 return;
-            }
+            string compilationName = null;
+            while (true)
+            {
+                var nameBox = new TextBox { PlaceholderText = "Enter Compilation Name" };
+                var nameDialog = new ContentDialog
+                {
+                    Title = "Enter Compilation Name",
+                    PrimaryButtonText = "Create",
+                    CloseButtonText = "Cancel",
+                    Content = nameBox,
+                    XamlRoot = this.Content.XamlRoot
+                };
 
-            // Step 4: Add the new compilation
+                var nameResult = await nameDialog.ShowAsync();
+                if (nameResult != ContentDialogResult.Primary)
+                    return;
+
+                compilationName = nameBox.Text.Trim();
+                if (string.IsNullOrWhiteSpace(compilationName))
+                {
+                    await ShowInfoDialog("Invalid Name", "Compilation name cannot be empty.");
+                    continue;
+                }
+
+                bool exists = Folders[selectedFolder].SubFolders.Any(sf => sf.Name.Equals(compilationName, StringComparison.OrdinalIgnoreCase));
+                if (exists)
+                {
+                    await ShowInfoDialog("Duplicate Name", $"A compilation named \"{compilationName}\" already exists in \"{selectedFolder}\".");
+                    continue;
+                }
+
+                break;
+            }
             Folders[selectedFolder].SubFolders.Add(new Folder { Name = compilationName });
             UpdateFolderList();
         }
@@ -1116,28 +1173,20 @@ namespace Clip
         {
             result = TimeSpan.Zero;
             var parts = time.Split(':');
-
             Debug.WriteLine($"Parsing time: {time}");
-
-            // Case 1: M:SS format (Minutes:Seconds) - both parts should be present
             if (parts.Length == 2)
             {
-                if (parts[0].Length == 1) // This is for cases like M:SS (e.g., "1:30")
+                if (parts[0].Length == 1) 
                 {
-                    // Prepend '00:' to make it 00:MM:SS
                     time = "0:" + time;
                     parts = time.Split(':');
                 }
-
-                // Now we have MM:SS or 00:MM:SS format
                 int minutes = int.Parse(parts[0]);
                 int seconds = int.Parse(parts[1]);
                 result = new TimeSpan(0, minutes, seconds);
                 Debug.WriteLine($"Parsed time: {result}");
                 return true;
             }
-
-            // Case 2: HH:MM:SS format (Hours:Minutes:Seconds)
             if (parts.Length == 3)
             {
                 int hours = int.Parse(parts[0]);
@@ -1150,8 +1199,6 @@ namespace Clip
 
             return false;
         }
-
-
         private void TimelineTimer_Tick(object sender, object e)
         {
             if (VideoPlayback?.MediaPlayer?.PlaybackSession == null)
@@ -1262,6 +1309,11 @@ namespace Clip
             {
                 mediaPlayer.Play();
             }
+        }
+        static bool IsValidTitle(string title)
+        {
+            string pattern = @"^[a-zA-Z0-9 _]*$";
+            return Regex.IsMatch(title, pattern);
         }
         private bool IsValidNumber(string time)
         {
