@@ -41,8 +41,6 @@ namespace Clip
             timelineTimer.Start();
             Body.KeyDown += Window_KeyDown;
         }
-
-
         private async Task ExportClipsFromJsonAsync(string json)
         {
             Debug.WriteLine("Starting ExportClipsFromJsonAsync...");
@@ -112,15 +110,10 @@ namespace Clip
 
             Debug.WriteLine("All clips exported.");
         }
-
-
-
         private async Task ExtractClipAsync(string videoPath, string outputFolder, string title, JsonElement clipData)
         {
             string? begin = clipData.GetProperty("begin").GetString();
             string? end = clipData.GetProperty("end").GetString();
-
-            // Preprocess the times to ensure they are in a format that TimeSpan can handle
             if (!TryParseTime(begin, out var startTime) || !TryParseTime(end, out var endTime))
             {
                 Debug.WriteLine($"    Invalid time format: {begin} or {end}");
@@ -139,12 +132,7 @@ namespace Clip
             string arguments = $"-y -ss {startTime.TotalSeconds} -i \"{videoPath}\" -t {duration} " +
                    "-c:v copy -c:a copy " +
                    $"\"{outputFile}\"";
-
-
-
             Debug.WriteLine($"    FFmpeg command: {ffmpegPath} {arguments}");
-
-
             var psi = new ProcessStartInfo
             {
                 FileName = ffmpegPath,
@@ -154,7 +142,6 @@ namespace Clip
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
-
             using var process = Process.Start(psi);
             string errorOutput = await process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
@@ -174,10 +161,6 @@ namespace Clip
                 Debug.WriteLine($"    Failed to export: {outputFile}");
             }
         }
-
-
-
-
         private string SanitizeFileName(string name)
         {
             foreach (var c in Path.GetInvalidFileNameChars())
@@ -186,9 +169,6 @@ namespace Clip
             }
             return name;
         }
-
-
-
         private void Window_KeyDown(object sender, KeyRoutedEventArgs e)
         {
             switch (e.Key)
@@ -294,7 +274,6 @@ namespace Clip
                     Debug.WriteLine("Skipped folderNode: Content is null or empty");
                     continue;
                 }
-
                 Debug.WriteLine($"Folder Name: {folderName}");
 
                 var folderContent = new Dictionary<string, object>();
@@ -372,22 +351,25 @@ namespace Clip
         {
             var node = args.InvokedItem as TreeViewNode;
             if (node == null || !node.Content.ToString().StartsWith("🎬")) return;
-
             var clipTitle = node.Content.ToString().Replace("🎬 ", "").Split('(')[0].Trim();
-
             foreach (var folder in Folders.Values)
             {
                 var clip = FindClipRecursive(folder, clipTitle);
                 if (clip != null)
                 {
+                    string defaultBegin = "0:00";
+                    string defaultEnd = SecondsToTimeFormat((int)videoDurationInSeconds);
+                    if (clip.Begin != defaultBegin || clip.End != defaultEnd)
+                    {
+                        BeginTimeInput.Text = clip.Begin;
+                        EndTimeInput.Text = clip.End;
+                    }
                     selectedClipForEditing = clip;
-                    BeginTimeInput.Text = clip.Begin;
-                    EndTimeInput.Text = clip.End;
                     break;
                 }
             }
-        } 
-        private Clip FindClipRecursive(Folder folder, string title)
+        }
+        private static Clip FindClipRecursive(Folder folder, string title)
         {
             var match = folder.Clips.FirstOrDefault(c => c.Title.StartsWith(title));
             if (match != null) return match;
@@ -520,8 +502,6 @@ namespace Clip
 
             await dialog.ShowAsync();
         }
-
-
         private async void CreateTimestamp_Click(object sender, RoutedEventArgs e)
         {
             if (Folders.Count == 0)
@@ -1063,7 +1043,7 @@ namespace Clip
             mediaPlayer.PlaybackSession.PositionChanged += positionChangedHandler;
             mediaPlayer.Play();
         }
-        private string SecondsToTimeFormat(int seconds)
+        private static string SecondsToTimeFormat(int seconds)
         {
             TimeSpan time = TimeSpan.FromSeconds(seconds);
 
@@ -1073,7 +1053,7 @@ namespace Clip
                 return $"{time.Minutes}:{time.Seconds:D2}";
         }
 
-        private int TimeToSeconds(TimeSpan time)
+        private static int TimeToSeconds(TimeSpan time)
         {
             return (int)time.TotalSeconds;
         }
@@ -1169,7 +1149,7 @@ namespace Clip
             }
             return true;
         }
-        private bool TryParseTime(string time, out TimeSpan result)
+        private static bool TryParseTime(string time, out TimeSpan result)
         {
             result = TimeSpan.Zero;
             var parts = time.Split(':');
@@ -1273,8 +1253,6 @@ namespace Clip
                 }
             }
         }
-
-
         private void BackwardsButton_Click(object sender, RoutedEventArgs e)
         {
             var currentPosition = VideoPlayback.MediaPlayer.Position;
@@ -1315,11 +1293,11 @@ namespace Clip
             string pattern = @"^[a-zA-Z0-9 _]*$";
             return Regex.IsMatch(title, pattern);
         }
-        private bool IsValidNumber(string time)
+        private static bool IsValidNumber(string time)
         {
             return Regex.IsMatch(time, @"^\d+s?$");
         }
-        private bool IsValidTimeFormat(string time)
+        private static bool IsValidTimeFormat(string time)
         {
             return Regex.IsMatch(time, @"^(\d{1,2}):(\d{1,2}):?(\d{1,2})?$");
         }
