@@ -40,6 +40,12 @@ namespace Clip
             timelineTimer.Tick += InitialTimestampLoad;
             timelineTimer.Start();
             Body.KeyDown += Window_KeyDown;
+            this.Closed += BackupSave;
+        }
+        private void BackupSave(object sender, WindowEventArgs e)
+        {
+            Backup backup = new(ExportTreeToJson());
+            backup.Activate();
         }
         private async Task ExportClipsFromJsonAsync(string json)
         {
@@ -193,6 +199,8 @@ namespace Clip
                 case VirtualKey.F11:
                     ToggleTrueFullscreen(); 
                     break;
+                case VirtualKey.N:
+                    throw new Exception("Intentional crash for backup system testing.");
             }
         }
         private void ToggleFullscreen()
@@ -393,22 +401,6 @@ namespace Clip
             {
                 await ShowInfoDialog("Invalid Time", "Please enter a valid time format and make sure the end time is after the start time.");
                 return;
-            }
-            if (endTime.TotalSeconds - beginTime.TotalSeconds > 600)
-            {
-                var confirmationDialog = new ContentDialog
-                {
-                    Title = "Confirm Saving Long Clip",
-                    Content = "The selected clip is longer than 10 minutes. Are you sure you want to save it?",
-                    PrimaryButtonText = "Yes",
-                    CloseButtonText = "No"
-                };
-
-                var confirmationResult = await confirmationDialog.ShowAsync();
-                if (confirmationResult != ContentDialogResult.Primary)
-                {
-                    return;
-                }
             }
 
             var selectedClip = selectedClipForEditing;
@@ -620,7 +612,7 @@ namespace Clip
 
             string begin = "0:00";
             string end = SecondsToTimeFormat((int)videoDurationInSeconds);
-
+            Debug.WriteLine(end);
             if (selectedTarget == "<Main Folder>")
             {
                 folder.Clips.Add(new Clip { Title = title, Begin = begin, End = end });
@@ -978,8 +970,6 @@ namespace Clip
                     break;
             }
         }
-
-
         private async void LoadVideoHandle(object sender, RoutedEventArgs e)
         {
             videoFile = await PickFileAsync();
@@ -1019,7 +1009,6 @@ namespace Clip
 
             return await filePicker.PickSingleFileAsync();
         }
-
         private void PlayButton_Click(object sender, RoutedEventArgs e)
         {
             if (!ValidateTimes(out TimeSpan beginTime, out TimeSpan endTime))
@@ -1046,18 +1035,16 @@ namespace Clip
         private static string SecondsToTimeFormat(int seconds)
         {
             TimeSpan time = TimeSpan.FromSeconds(seconds);
-
+            Debug.WriteLine(time);
             if (time.Hours > 0)
                 return $"{time.Hours}:{time.Minutes:D2}:{time.Seconds:D2}";
             else
                 return $"{time.Minutes}:{time.Seconds:D2}";
         }
-
         private static int TimeToSeconds(TimeSpan time)
         {
             return (int)time.TotalSeconds;
         }
-
         private void ChangeBeginTimeForward(object sender, RoutedEventArgs e)
         {
             if (!TryParseTime(BeginTimeInput.Text, out TimeSpan beginTime) ||
@@ -1073,7 +1060,6 @@ namespace Clip
 
             BeginTimeInput.Text = SecondsToTimeFormat(newBeginSeconds);
         }
-
         private void ChangeBeginTimeBackward(object sender, RoutedEventArgs e)
         {
             if (!TryParseTime(BeginTimeInput.Text, out TimeSpan beginTime) ||
@@ -1088,7 +1074,6 @@ namespace Clip
 
             BeginTimeInput.Text = SecondsToTimeFormat(newBeginSeconds);
         }
-
         private void ChangeEndTimeForward(object sender, RoutedEventArgs e)
         {
             if (!TryParseTime(BeginTimeInput.Text, out TimeSpan beginTime) ||
@@ -1107,7 +1092,6 @@ namespace Clip
 
             EndTimeInput.Text = SecondsToTimeFormat(newEndSeconds);
         }
-
         private void ChangeEndTimeBackward(object sender, RoutedEventArgs e)
         {
             if (!TryParseTime(BeginTimeInput.Text, out TimeSpan beginTime) ||
@@ -1123,8 +1107,6 @@ namespace Clip
 
             EndTimeInput.Text = SecondsToTimeFormat(newEndSeconds);
         }
-
-
         private bool ValidateTimes(out TimeSpan beginTime, out TimeSpan endTime)
         {
             beginTime = TimeSpan.Zero;
@@ -1233,7 +1215,6 @@ namespace Clip
                 }
             }
         }
-
         private void TimestampChange_LostFocus(object sender, RoutedEventArgs e)
         {
             string input = TimestampChange.Text.Trim();
