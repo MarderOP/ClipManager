@@ -18,6 +18,9 @@ using System.Linq;
 using System.Text.Json;
 using Microsoft.UI;
 using System.IO;
+using Microsoft.UI.Xaml.Media.Imaging;
+using System.Runtime.InteropServices;
+using Microsoft.UI.Xaml.Media;
 namespace Clip
 {
     public sealed partial class MainWindow : Window
@@ -44,8 +47,12 @@ namespace Clip
         }
         private void BackupSave(object sender, WindowEventArgs e)
         {
-            Backup backup = new(ExportTreeToJson());
-            backup.Activate();
+            string data = ExportTreeToJson();
+            if (data == null || data=="{ }")
+            {
+                Backup backup = new(data);
+                backup.Activate();
+            }   
         }
         private async Task ExportClipsFromJsonAsync(string json)
         {

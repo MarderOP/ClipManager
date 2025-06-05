@@ -74,19 +74,20 @@
 
                     <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Orientation="Horizontal">
                         <Button Click="BackwardsButton_Click" Style="{StaticResource ButtonStyle}">
-                            
-                            <Button.Content>
-                                <Image Source="/Assets/Left.svg" Width="24" Height="24"/>
-                            </Button.Content>
+                            <Image Source="ms-appx:///Assets/Left.svg" Width="24" Height="24" />
                         </Button>
                         <Button Click="PauseButton_Click" Style="{StaticResource ButtonStyle}">
                             <Button.Content>
-                                <Image Source="/Assets/Pause.svg" Width="24" Height="24"/>
+                                <Image Source="ms-appx:///Assets/Pause.svg" Width="24" Height="24"/>
                             </Button.Content>
                         </Button>
                         <Button Click="ForwardsButton_Click" Style="{StaticResource ButtonStyle}">
                             <Button.Content>
-                                <Image Source="/Assets/Right.svg" Width="24" Height="24"/>
+                                <Image Width="24" Height="24" >
+                                    <Image.Source>
+                                        <SvgImageSource UriSource="/Assets/Right.svg"/>
+                                    </Image.Source>
+                                </Image>
                             </Button.Content>
                         </Button>
                     </StackPanel>
@@ -108,13 +109,13 @@
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                         <Button Click="ChangeBeginTimeBackward" Style="{StaticResource ButtonStyle}">
                             <Button.Content>
-                                <Image Source="/Assets/Left.svg" Width="24" Height="24"/>
+                                <Image Source="ms-appx:///Assets/Left.svg" Width="24" Height="24"/>
                             </Button.Content>
                         </Button>
                         <TextBox x:Name="BeginTimeInput" Width="200" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="10" PlaceholderText="Begin (HH:MM:SS)" />
                         <Button Click="ChangeBeginTimeForward" Style="{StaticResource ButtonStyle}">
                             <Button.Content>
-                                <Image Source="/Assets/Right.svg" Width="24" Height="24"/>
+                                <Image Source="ms-appx:///Assets/Right.svg" Width="24" Height="24"/>
                             </Button.Content>
                         </Button>
                     </StackPanel>
