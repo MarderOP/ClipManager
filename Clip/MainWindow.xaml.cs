@@ -25,6 +25,7 @@ namespace Clip
 {
     public sealed partial class MainWindow : Window
     {
+        private VideoControls _videoControls;
         private MediaPlayer mediaPlayer;
         private StorageFile videoFile;
         private double videoDurationInSeconds;
@@ -711,7 +712,6 @@ namespace Clip
             Folders[selectedFolder].SubFolders.Add(new Folder { Name = compilationName });
             UpdateFolderList();
         }
-
         private async Task DeleteFolder()
         {
             var folderNames = Folders.Keys.ToList();
@@ -935,7 +935,6 @@ namespace Clip
                 UpdateFolderList();
             }
         }
-
         private async void DeleteButton_Click(object sender, RoutedEventArgs e)
         {
             var options = new List<string> { "Delete Folder", "Delete Compilation", "Delete Timestamp" };
@@ -987,6 +986,7 @@ namespace Clip
                 VideoPlayback.SetMediaPlayer(mediaPlayer);
                 mediaPlayer.Source = mediaSource;
                 mediaPlayer.Play();
+                _videoControls = new VideoControls(VideoPlayback.MediaPlayer, TimeSpan.FromSeconds(VideoTimeOffset));
                 mediaPlayer.MediaOpened += (sender, args) =>
                 {
                     videoDurationInSeconds = mediaPlayer.PlaybackSession.NaturalDuration.TotalSeconds;
@@ -1243,38 +1243,15 @@ namespace Clip
         }
         private void BackwardsButton_Click(object sender, RoutedEventArgs e)
         {
-            var currentPosition = VideoPlayback.MediaPlayer.Position;
-            var newPosition = currentPosition - TimeSpan.FromSeconds(VideoTimeOffset);
-            if (newPosition < TimeSpan.Zero)
-            {
-                newPosition = TimeSpan.Zero;
-            }
-
-            VideoPlayback.MediaPlayer.Position = newPosition;
+            _videoControls.Backwards();
         }
-
         private void ForwardsButton_Click(object sender, RoutedEventArgs e)
         {
-            var currentPosition = VideoPlayback.MediaPlayer.Position;
-            var newPosition = currentPosition + TimeSpan.FromSeconds(VideoTimeOffset);
-            if (newPosition > VideoPlayback.MediaPlayer.PlaybackSession.NaturalDuration)
-            {
-                newPosition = VideoPlayback.MediaPlayer.PlaybackSession.NaturalDuration;
-            }
-
-            VideoPlayback.MediaPlayer.Position = newPosition;
+            _videoControls.Forwards();
         }
         private void PauseButton_Click(object sender, RoutedEventArgs e)
         {
-            var mediaPlayer = VideoPlayback.MediaPlayer;
-            if (mediaPlayer.PlaybackSession.PlaybackState == MediaPlaybackState.Playing)
-            {
-                mediaPlayer.Pause();
-            }
-            else
-            {
-                mediaPlayer.Play();
-            }
+            _videoControls.TogglePlayPause();
         }
         static bool IsValidTitle(string title)
         {

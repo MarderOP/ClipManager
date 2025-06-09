@@ -33,18 +33,25 @@
 
 
             <!-- Left Panel -->
-            <StackPanel x:Name="LeftPanel" Grid.Column="0" Background="#2E2E2E" Padding="16">
+            <StackPanel x:Name="LeftPanel" Grid.Column="0" Background="#2E2E2E" Padding="16" >
                 <TextBlock Text="📁 All clips Structure from stream" FontSize="18" FontWeight="Bold" Foreground="#E0E0E0" Margin="0,0,0,12"/>
                 <StackPanel x:Name="LeftPanelContent" Visibility="Collapsed">
                     <Button Content="Create Folder" Click="CreateFolder_Click" Style="{StaticResource ButtonStyle}"/>
                     <Button Content="Create Timestamp" Click="CreateTimestamp_Click" Style="{StaticResource ButtonStyle}"/>
                     <Button Content="Create Compilation" Click="CreateCompilation_Click" Style="{StaticResource ButtonStyle}"/>
                     <Button Content="Delete" Click="DeleteButton_Click" Style="{StaticResource ButtonStyle}"/>
-                    <TreeView x:Name="FolderTreeView" ItemInvoked="FolderTreeView_ItemInvoked" Margin="10"  SelectionMode="Single" Background="#1F1F1F" BorderBrush="#333333" AllowDrop="False">
+                    <TreeView x:Name="FolderTreeView" ItemInvoked="FolderTreeView_ItemInvoked" Margin="10"  SelectionMode="Single" CanDragItems="False" Background="#1F1F1F" BorderBrush="#333333" AllowDrop="False" >
                         <TreeView.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Background="#2A2A2A" Margin="5" Padding="8">
                                     <TextBlock Text="{Binding}" Foreground="#E0E0E0" ToolTipService.ToolTip="{Binding}" />
+                                    <StackPanel.ContextFlyout>
+                                        <MenuFlyout>
+                                            <MenuFlyoutItem Text="Rename"
+                                        />
+                                            <MenuFlyoutItem Text="Delete" />
+                                        </MenuFlyout>
+                                    </StackPanel.ContextFlyout>
                                 </StackPanel>
                             </DataTemplate>
                         </TreeView.ItemTemplate>
