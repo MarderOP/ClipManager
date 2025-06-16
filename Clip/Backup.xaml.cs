@@ -12,6 +12,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text.Json.Nodes;
+using System.Threading.Tasks;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
 
@@ -32,22 +33,37 @@ namespace Clip
             JsonData.Text = json;
             jsonData = json;
         }
+        private async Task ShowInfoDialog(string title, string message)
+        {
+            var dialog = new ContentDialog
+            {
+                Title = title,
+                Content = message,
+                CloseButtonText = "OK",
+                XamlRoot = this.Content.XamlRoot
+            };
 
+            await dialog.ShowAsync();
+        }
         private async void SaveBackupToFile(object sender, RoutedEventArgs e)
         {
             try
             {
                 string downloadsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 string backupJsonPath = Path.Combine(downloadsPath, $"clips_backup_{timestamp}.json");
+
                 await File.WriteAllTextAsync(backupJsonPath, jsonData);
                 Debug.WriteLine($"Backup JSON saved at: {backupJsonPath}");
+
+                await ShowInfoDialog("Backup Saved", $"Backup was successfully saved to:\n{backupJsonPath}");
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Failed to save backup JSON: {ex.Message}");
+                await ShowInfoDialog("Error", $"Failed to save backup: {ex.Message}");
             }
         }
+
     }
 }
