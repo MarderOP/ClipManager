@@ -18,9 +18,6 @@ using System.Linq;
 using System.Text.Json;
 using Microsoft.UI;
 using System.IO;
-using Microsoft.UI.Xaml.Media.Imaging;
-using System.Runtime.InteropServices;
-using Microsoft.UI.Xaml.Media;
 namespace Clip
 {
     public sealed partial class MainWindow : Window
@@ -49,11 +46,12 @@ namespace Clip
         private void BackupSave(object sender, WindowEventArgs e)
         {
             string data = ExportTreeToJson();
-            if (data == null || data=="{ }")
+            Debug.WriteLine("backup active");
+            if (data != null && data != "{}")
             {
                 Backup backup = new(data);
                 backup.Activate();
-            }   
+            }
         }
         private async Task ExportClipsFromJsonAsync(string json)
         {
@@ -224,6 +222,7 @@ namespace Clip
                 VideoPlayback.Height = double.NaN;
                 MainPanel.HorizontalAlignment = HorizontalAlignment.Center;
                 MainPanel.VerticalAlignment = VerticalAlignment.Center;
+                FullscreenControl.Visibility = Visibility.Collapsed;
                 BodyContent.ColumnDefinitions[1].Width = new GridLength(0.75, GridUnitType.Star);  
                 BodyContent.ColumnDefinitions[0].Width = new GridLength(0.20, GridUnitType.Star); 
                 BodyContent.ColumnDefinitions[2].Width = new GridLength(0.05, GridUnitType.Star);
@@ -234,6 +233,7 @@ namespace Clip
                 LeftPanel.Visibility = Visibility.Collapsed;
                 RightPanel.Visibility = Visibility.Collapsed;
                 //Header.Visibility = Visibility.Collapsed;
+                FullscreenControl.Visibility = Visibility.Collapsed;
                 BodyContent.ColumnDefinitions[0].Width = new GridLength(0); 
                 BodyContent.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star); 
                 BodyContent.ColumnDefinitions[2].Width = new GridLength(0);  
@@ -994,6 +994,7 @@ namespace Clip
                 LoadVideoButton.Visibility = Visibility.Collapsed;
                 LeftPanelContent.Visibility = Visibility.Visible;
                 VideoManipulation.Visibility = Visibility.Visible;
+                
                 TimestampButtons.Visibility = Visibility.Visible;
                 TimestampManipulation.Visibility = Visibility.Visible;
             }
@@ -1183,6 +1184,7 @@ namespace Clip
                 string current = position.ToString(@"hh\:mm\:ss\.fff");
                 string total = duration.ToString(@"hh\:mm\:ss\.fff");
                 Timeline.Text = $"{current} - {total}";
+                Timeline2.Text = $"{current} - {total}";
             }
             else
             {
