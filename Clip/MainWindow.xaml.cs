@@ -30,6 +30,7 @@ namespace Clip
         private StorageFile videoFile;
         private double videoDurationInSeconds;
         private DispatcherTimer timelineTimer;
+        private DispatcherTimer resizeDebounceTimer;
         private int VideoTimeOffset = 10;
         private int VideoTimestampOffset = 10;
         private bool isFullscreen = false;
@@ -43,9 +44,156 @@ namespace Clip
             timelineTimer.Tick += TimelineTimer_Tick;
             timelineTimer.Tick += InitialTimestampLoad;
             timelineTimer.Start();
+            resizeDebounceTimer = new DispatcherTimer();
+            resizeDebounceTimer.Interval = TimeSpan.FromMilliseconds(500); 
+            resizeDebounceTimer.Tick += ResizeDebounceTimer_Tick;
             Body.KeyDown += Window_KeyDown;
             this.Closed += BackupSave;
+            this.SizeChanged += Window_SizeChanged;
         }
+
+        private void ResizeDebounceTimer_Tick(object sender, object e)
+        {
+            if (mediaPlayer == null || isFullscreen)  return;
+            resizeDebounceTimer.Stop();
+            ResizeControls(0.8);
+            ViewboxVideo.Width = double.NaN;
+            ViewboxVideo.Height = double.NaN;
+            ViewboxVideo.UpdateLayout();
+            double videoWidth = ViewboxVideo.ActualWidth;
+            double videoHeight = ViewboxVideo.ActualHeight;
+            double panelWidth = VideoPanel.ActualWidth;
+            double panelHeight = VideoPanel.ActualHeight;
+            double controlsHeight = ControlsPanel.ActualHeight;
+            var appWindow = this.AppWindow;
+            double windowHeight = appWindow?.ClientSize.Height ?? 0;
+            if (panelWidth >= videoWidth && panelHeight >= videoHeight)
+            {
+                VideoPanel.Height = videoHeight + 10;
+            }
+            else
+            {
+                VideoPanel.Height = double.NaN;
+            }
+            if ((videoHeight + controlsHeight + 20) > windowHeight)
+            {
+                Debug.WriteLine("[Overflow] Video + Controls exceed window height.");
+                double scale = 0.8;
+                double finalScale = 1.0;
+                bool fits = false;
+                while (scale >= 0.05)
+                {
+                    ResizeControls(scale);
+                    ViewboxVideo.Height = double.NaN;
+                    ViewboxVideo.Width = double.NaN;
+                    ViewboxVideo.UpdateLayout();
+                    ControlsPanel.UpdateLayout();
+
+                    double newVideoHeight = ViewboxVideo.ActualHeight;
+                    double newControlsHeight = ControlsPanel.ActualHeight;
+
+                    if ((newVideoHeight + newControlsHeight + 20) <= windowHeight)
+                    {
+                        fits = true;
+                        finalScale = scale;
+                        Debug.WriteLine($"[Resize] Fit achieved at scale: {scale:0.00}");
+                        break;
+                    }
+
+                    scale -= 0.05;
+                }
+                if (!fits)
+                {
+                    double minScale = 0.1;
+                    ResizeControls(minScale); 
+
+                    double ratio = 0.8;
+                    while (ratio >= 0.1)
+                    {
+                        double testVideoHeight = windowHeight * ratio;
+                        ViewboxVideo.Height = testVideoHeight;
+                        ViewboxVideo.Width = double.NaN;
+                        ViewboxVideo.UpdateLayout();
+                        ControlsPanel.UpdateLayout();
+
+                        double adjustedVideoHeight = ViewboxVideo.ActualHeight;
+                        double adjustedControlsHeight = ControlsPanel.ActualHeight;
+
+                        if ((adjustedVideoHeight + adjustedControlsHeight + 20) <= windowHeight)
+                        {
+                            fits = true;
+                            Debug.WriteLine($"[Resize] Fit achieved with video ratio: {ratio:0.00}");
+                            break;
+                        }
+
+                        ratio -= 0.02; 
+                    }
+
+
+                    if (!fits)
+                    {
+                        Debug.WriteLine("[Resize] No fit found. Applying minimum video height and control scale.");
+                        ViewboxVideo.Height = windowHeight * 0.1;
+                    }
+                }
+                else
+                {
+                    double videoMaxHeight = windowHeight * 0.8;
+                    ViewboxVideo.Height = videoMaxHeight;
+                }
+
+                ViewboxVideo.Width = double.NaN;
+                VideoPanel.Height = double.NaN;
+            }
+            else
+            {
+                Debug.WriteLine("[Overflow] No overflow. Everything fits.");
+            }
+        }
+        private void ResizeControls(double scaleFactor)
+        {
+            scaleFactor = Math.Clamp(scaleFactor, 0.6, 1.0);
+            Timeline.FontSize = 20 * scaleFactor;
+            Timeline.Width = double.NaN;
+
+            BackwardsButtonIcon.Width = 30 * scaleFactor;
+            BackwardsButtonIcon.Height = 30 * scaleFactor;
+
+            PauseButtonIcon.Width = 30 * scaleFactor;
+            PauseButtonIcon.Height = 30 * scaleFactor;
+
+            ForwardsButtonIcon.Width = 30 * scaleFactor;
+            ForwardsButtonIcon.Height = 30 * scaleFactor;
+
+            TimeChange.FontSize = 20 * scaleFactor;
+            TimeChange.Width = double.NaN;
+            BeginTimeInput.Width = double.NaN;
+            BeginTimeInput.FontSize = 20 * scaleFactor;
+            EndTimeInput.Width = double.NaN;
+            EndTimeInput.FontSize = 20 * scaleFactor;
+            TimestampChange.FontSize = 20 * scaleFactor;
+            TimestampChange.Width = double.NaN;
+
+            ChangeBeginTimeBackwardIcon.Width = 30 * scaleFactor;
+            ChangeBeginTimeBackwardIcon.Height = 30 * scaleFactor;
+
+            ChangeBeginTimeForwardIcon.Width = 30 * scaleFactor;
+            ChangeBeginTimeForwardIcon.Height = 30 * scaleFactor;
+
+            ChangeEndTimeBackwardIcon.Width = 30 * scaleFactor;
+            ChangeEndTimeBackwardIcon.Height = 30 * scaleFactor;
+
+            ChangeEndTimeForwardIcon.Width = 30 * scaleFactor;
+            ChangeEndTimeForwardIcon.Height = 30 * scaleFactor;
+            PlayTimestamp.FontSize = 20 * scaleFactor;
+            SaveTimestamp.FontSize = 20 * scaleFactor;
+            double verticalMargin = 8 * scaleFactor;
+            Thickness margin = new Thickness(0, verticalMargin, 0, verticalMargin);
+            PlayTimestamp.Margin = margin;
+            SaveTimestamp.Margin = margin;
+        }
+
+
         private void BackupSave(object sender, WindowEventArgs e)
         {
             string data = ExportTreeToJson();
@@ -201,9 +349,9 @@ namespace Clip
                     break;
 
                 case VirtualKey.F:
+                    resizeDebounceTimer.Stop();
                     ToggleFullscreen();
                     break;
-
                 case VirtualKey.F11:
                     ToggleTrueFullscreen(); 
                     break;
@@ -211,44 +359,60 @@ namespace Clip
                     throw new Exception("Intentional crash for backup system testing.");
             }
         }
-        private void ToggleFullscreen()
+        private void Window_SizeChanged(object sender, WindowSizeChangedEventArgs e)
         {
+            resizeDebounceTimer.Stop();
+            resizeDebounceTimer.Start();
+        }
+
+        private async void ToggleFullscreen()
+        {
+            var window = this.AppWindow;
+            if (window == null) return;
+
+            resizeDebounceTimer.Stop();
+
             if (isFullscreen)
             {
                 LeftPanel.Visibility = Visibility.Visible;
                 RightPanel.Visibility = Visibility.Visible;
-                //Header.Visibility = Visibility.Visible;
-                VideoPlayback.HorizontalAlignment = HorizontalAlignment.Stretch;
-                VideoPlayback.VerticalAlignment = VerticalAlignment.Stretch;
-                VideoPlayback.Width = double.NaN;
-                VideoPlayback.Height = double.NaN;
-                MainPanel.HorizontalAlignment = HorizontalAlignment.Center;
-                MainPanel.VerticalAlignment = VerticalAlignment.Center;
-                BodyContent.ColumnDefinitions[1].Width = new GridLength(0.75, GridUnitType.Star);  
-                BodyContent.ColumnDefinitions[0].Width = new GridLength(0.20, GridUnitType.Star); 
-                BodyContent.ColumnDefinitions[2].Width = new GridLength(0.05, GridUnitType.Star);
+                ControlsPanel.Visibility = Visibility.Visible;
+                BodyContent.ColumnDefinitions[0].Width = new GridLength(0.15, GridUnitType.Star);
+                BodyContent.ColumnDefinitions[1].Width = new GridLength(0.85, GridUnitType.Star);
+                BodyContent.ColumnDefinitions[2].Width = GridLength.Auto;
+                MainPanel.RowDefinitions[0].Height = GridLength.Auto;
+                VideoPanel.ClearValue(FrameworkElement.HeightProperty);
+                VideoPanel.ClearValue(FrameworkElement.WidthProperty);
+                ViewboxVideo.ClearValue(FrameworkElement.HeightProperty);
                 isFullscreen = false;
             }
             else
             {
+                ControlsPanel.Visibility = Visibility.Collapsed;
                 LeftPanel.Visibility = Visibility.Collapsed;
                 RightPanel.Visibility = Visibility.Collapsed;
-                //Header.Visibility = Visibility.Collapsed;
-                BodyContent.ColumnDefinitions[0].Width = new GridLength(0); 
-                BodyContent.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star); 
-                BodyContent.ColumnDefinitions[2].Width = new GridLength(0);  
-                var window = this.AppWindow;
-                if (window != null)
-                {
-                    VideoPlayback.Width = window.ClientSize.Width;
-                    VideoPlayback.Height = window.ClientSize.Height;
-                }
-                MainPanel.HorizontalAlignment = HorizontalAlignment.Stretch;
-                MainPanel.VerticalAlignment = VerticalAlignment.Stretch;
+                BodyContent.ColumnDefinitions[0].Width = new GridLength(0);
+                BodyContent.ColumnDefinitions[2].Width = new GridLength(0);
+                BodyContent.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star);
+                VideoPanel.Width = double.NaN;
+                VideoPanel.Height = Body.ActualHeight;
+                VideoPanel.UpdateLayout();
+                ViewboxVideo.Height = VideoPanel.ActualHeight;
 
                 isFullscreen = true;
             }
+            await Task.Delay(50);
+
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                ViewboxVideo.UpdateLayout();
+                VideoPlayback.UpdateLayout();
+                VideoPanel.UpdateLayout();
+                resizeDebounceTimer.Start();
+            });
         }
+
+
         private AppWindow GetAppWindowForCurrentWindow()
         {
             IntPtr hWnd = WindowNative.GetWindowHandle(this);
@@ -283,7 +447,8 @@ namespace Clip
 
             foreach (var folderNode in FolderTreeView.RootNodes)
             {
-                string folderName = folderNode.Content as string;
+                Folder folderRef = folderNode.Content as Folder;
+                string folderName = folderRef.Name;
 
                 if (string.IsNullOrEmpty(folderName))
                 {
@@ -352,7 +517,8 @@ namespace Clip
         {
             public string Name { get; set; }
             public List<Clip> Clips { get; set; } = new List<Clip>(); 
-            public List<Folder> SubFolders { get; set; } = new List<Folder>(); 
+            public List<Folder> SubFolders { get; set; } = new List<Folder>();
+            public string Display => $"{Name}";
         }
 
         public class Clip
@@ -360,31 +526,228 @@ namespace Clip
             public string Title { get; set; }
             public string Begin { get; set; }
             public string End { get; set; }
+            public string Display => $"🎬 {Title}";
+        }
+        public Dictionary<string, Folder> Folders { get; set; } = new Dictionary<string, Folder>();
+
+        private async void Rename_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuFlyoutItem menuItem || menuItem.Tag is not TreeViewNode node)
+                return;
+
+            if (node.Content is Clip clip)
+            {
+                string currentName = clip.Title;
+                string newName = await PromptForRename(currentName);
+
+                if (string.IsNullOrWhiteSpace(newName) || newName == currentName)
+                    return;
+
+                await RenameClip(node, clip, newName);
+            }
+            else if (node.Content is Folder folder)
+            {
+                string currentName = folder.Name;
+                string newName = await PromptForRename(currentName);
+
+                if (string.IsNullOrWhiteSpace(newName) || newName == currentName)
+                    return;
+
+                await RenameFolderOrCompilation(node, folder, newName);
+            }
+
+            UpdateFolderList();
         }
 
-        public Dictionary<string, Folder> Folders { get; set; } = new Dictionary<string, Folder>();
-        private void FolderTreeView_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
+
+        private async Task RenameClip(TreeViewNode node, Clip clip, string newName)
         {
-            var node = args.InvokedItem as TreeViewNode;
-            if (node == null || !node.Content.ToString().StartsWith("🎬")) return;
-            var clipTitle = node.Content.ToString().Replace("🎬 ", "").Split('(')[0].Trim();
+            // Find the folder that contains this clip:
             foreach (var folder in Folders.Values)
             {
-                var clip = FindClipRecursive(folder, clipTitle);
-                if (clip != null)
+                if (folder.Clips.Contains(clip))
                 {
-                    string defaultBegin = "0:00";
-                    string defaultEnd = SecondsToTimeFormat((int)videoDurationInSeconds);
-                    if (clip.Begin != defaultBegin || clip.End != defaultEnd)
+                    // Check for duplicate in the same folder or subfolders:
+                    var sameLevel = folder.Clips.Concat(folder.SubFolders.SelectMany(sf => sf.Clips));
+                    if (sameLevel.Any(c => c.Title.Equals(newName, StringComparison.OrdinalIgnoreCase)))
                     {
-                        BeginTimeInput.Text = clip.Begin;
-                        EndTimeInput.Text = clip.End;
+                        await ShowInfoDialog("Duplicate Clip", $"A clip with the name \"{newName}\" already exists.");
+                        return;
                     }
-                    selectedClipForEditing = clip;
-                    break;
+
+                    clip.Title = newName;
+                    node.Content = clip; // Just assign again to refresh binding if needed
+                    return;
+                }
+            }
+
+            await ShowInfoDialog("Rename Failed", "Clip not found.");
+        }
+
+        private async Task RenameFolderOrCompilation(TreeViewNode node, Folder folder, string newName)
+        {
+            // For top-level folder:
+            if (Folders.ContainsKey(folder.Name))
+            {
+                if (Folders.ContainsKey(newName))
+                {
+                    await ShowInfoDialog("Duplicate Folder", $"A folder named \"{newName}\" already exists.");
+                    return;
+                }
+
+                Folders.Remove(folder.Name);
+                folder.Name = newName;
+                Folders[newName] = folder;
+                node.Content = folder;
+                return;
+            }
+
+            // For subfolders inside folders:
+            foreach (var parentFolder in Folders.Values)
+            {
+                var match = parentFolder.SubFolders.FirstOrDefault(sf => sf == folder);
+                if (match != null)
+                {
+                    if (parentFolder.SubFolders.Any(sf => sf.Name == newName))
+                    {
+                        await ShowInfoDialog("Duplicate Compilation", $"A compilation named \"{newName}\" already exists in this folder.");
+                        return;
+                    }
+
+                    folder.Name = newName;
+                    node.Content = folder;
+                    return;
                 }
             }
         }
+
+        private async Task<string> PromptForRename(string oldName)
+        {
+            var dialog = new ContentDialog
+            {
+                Title = $"Rename \"{oldName}\"",
+                PrimaryButtonText = "Rename",
+                CloseButtonText = "Cancel",
+                XamlRoot = this.Content.XamlRoot
+            };
+
+            var inputBox = new TextBox { };
+            dialog.Content = inputBox;
+
+            var result = await dialog.ShowAsync();
+            return result == ContentDialogResult.Primary ? inputBox.Text.Trim() : null;
+        }
+
+        private async void Delete_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is MenuFlyoutItem menuItem && menuItem.Tag is TreeViewNode node)
+            {
+                string itemName = node.Content?.ToString() ?? "";
+
+                var confirmDialog = new ContentDialog
+                {
+                    Title = "Delete Confirmation",
+                    Content = $"Are you sure you want to delete \"{itemName}\"?\n\nThis action cannot be undone.",
+                    PrimaryButtonText = "Delete",
+                    CloseButtonText = "Cancel",
+                    XamlRoot = this.Content.XamlRoot
+                };
+
+                var result = await confirmDialog.ShowAsync();
+                if (result != ContentDialogResult.Primary)
+                    return;
+
+                if (itemName.StartsWith("🎬"))
+                {
+                    await DeleteClipByName(itemName);
+                }
+                else
+                {
+                    await DeleteFolderOrCompilationByName(itemName);
+                }
+
+                UpdateFolderList();
+            }
+            else
+            {
+                await ShowInfoDialog("Error", "Could not identify the selected item to delete.");
+            }
+        }
+
+
+        private async Task DeleteClipByName(string itemName)
+        {
+            string clipTitle = itemName.Replace("🎬 ", "").Split('(')[0].Trim();
+
+            foreach (var folder in Folders.Values)
+            {
+                if (TryRemoveClipFromFolder(folder, clipTitle))
+                    return;
+            }
+
+            await ShowInfoDialog("Deletion Failed", "Clip could not be found.");
+        }
+
+        private async Task DeleteFolderOrCompilationByName(string name)
+        {
+            if (Folders.ContainsKey(name))
+            {
+                Folders.Remove(name);
+                return;
+            }
+
+            foreach (var folder in Folders.Values)
+            {
+                var match = folder.SubFolders.FirstOrDefault(sf => sf.Name == name);
+                if (match != null)
+                {
+                    folder.SubFolders.Remove(match);
+                    return;
+                }
+            }
+
+            await ShowInfoDialog("Deletion Failed", "Folder or Compilation could not be found.");
+        }
+
+
+        private bool TryRemoveClipFromFolder(Folder folder, string title)
+        {
+            var match = folder.Clips.FirstOrDefault(c => c.Title == title);
+            if (match != null)
+            {
+                folder.Clips.Remove(match);
+                return true;
+            }
+
+            foreach (var sub in folder.SubFolders)
+            {
+                if (TryRemoveClipFromFolder(sub, title))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private void FolderTreeView_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
+        {    
+            var node = args.InvokedItem as TreeViewNode;
+            if (node == null) return;
+
+            if (node.Content is Clip clip)
+            {
+                string defaultBegin = "0:00";
+                string defaultEnd = SecondsToTimeFormat((int)videoDurationInSeconds);
+
+                if (clip.Begin != defaultBegin || clip.End != defaultEnd)
+                {
+                    BeginTimeInput.Text = clip.Begin;
+                    EndTimeInput.Text = clip.End;
+                }
+
+                selectedClipForEditing = clip;
+            }
+        }
+
         private static Clip FindClipRecursive(Folder folder, string title)
         {
             var match = folder.Clips.FirstOrDefault(c => c.Title.StartsWith(title));
@@ -443,10 +806,10 @@ namespace Clip
 
         private TreeViewNode CreateFolderNode(Folder folder)
         {
-            var node = new TreeViewNode { Content = folder.Name };
+            var node = new TreeViewNode { Content = folder };
             foreach (var clip in folder.Clips)
             {
-                var clipNode = new TreeViewNode { Content = $"🎬 {clip.Title}" };
+                var clipNode = new TreeViewNode { Content = clip };
                 node.Children.Add(clipNode);
             }
             foreach (var subFolder in folder.SubFolders)
@@ -992,6 +1355,7 @@ namespace Clip
                     videoDurationInSeconds = mediaPlayer.PlaybackSession.NaturalDuration.TotalSeconds;
                 };
                 LoadVideoButton.Visibility = Visibility.Collapsed;
+                FolderTreeView.Visibility = Visibility.Visible;
                 LeftPanelContent.Visibility = Visibility.Visible;
                 VideoManipulation.Visibility = Visibility.Visible;
                 TimestampButtons.Visibility = Visibility.Visible;
