@@ -60,11 +60,11 @@
                         <TreeView.ItemTemplate>
                             <DataTemplate >
                                 <Border Background="#2E2E2E"
-                BorderBrush="#444444"
-                BorderThickness="1"
-                CornerRadius="6"
-                Margin="4"
-                Padding="6">
+                                        BorderBrush="{Binding Content.BorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Margin="4"
+                                    Padding="6">
                                     <StackPanel>
                                         <TextBlock Text="{Binding Content.Display}" Foreground="#E0E0E0" ToolTipService.ToolTip="{Binding}" />
                                         <StackPanel.ContextFlyout>
@@ -250,11 +250,9 @@
             <StackPanel x:Name="RightPanel" Grid.Column="2" Background="#2E2E2E">
                 <TextBlock>JSON content preview:</TextBlock>
                 <Button Click="ExportJsonButton_Click">Export JSON</Button>
-                <Button>Import JSON</Button>
+                <Button Click="ImportJsonButton_Click">Import JSON</Button>
                 <TextBlock x:Name="JsonPreview"></TextBlock>
             </StackPanel>
-            
-            
         </Grid>
     </Grid>
 </Window>

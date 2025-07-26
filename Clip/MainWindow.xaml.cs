@@ -1,26 +1,28 @@
-﻿using Microsoft.UI.Xaml;
-using Windows.Storage.Pickers;
-using Windows.Storage;
-using Windows.Media.Core;
-using Windows.Media.Playback;
-using WinRT.Interop;
+﻿using ABI.Windows.UI;
+using Microsoft.UI;
+using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using System.Diagnostics;
-using Microsoft.UI.Windowing;
-using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Controls;
-using Windows.System;
 using Windows.Foundation;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text.Json;
-using Microsoft.UI;
-using System.IO;
-using Microsoft.UI.Xaml.Media.Imaging;
-using System.Runtime.InteropServices;
-using Microsoft.UI.Xaml.Media;
+using Windows.Media.Core;
+using Windows.Media.Playback;
+using Windows.Storage;
+using Windows.Storage.Pickers;
+using Windows.System;
+using WinRT.Interop;
 namespace Clip
 {
     public sealed partial class MainWindow : Window
@@ -51,7 +53,6 @@ namespace Clip
             this.Closed += BackupSave;
             this.SizeChanged += Window_SizeChanged;
         }
-
         private void ResizeDebounceTimer_Tick(object sender, object e)
         {
             if (mediaPlayer == null || isFullscreen)  return;
@@ -192,8 +193,6 @@ namespace Clip
             PlayTimestamp.Margin = margin;
             SaveTimestamp.Margin = margin;
         }
-
-
         private void BackupSave(object sender, WindowEventArgs e)
         {
             string data = ExportTreeToJson();
@@ -411,8 +410,6 @@ namespace Clip
                 resizeDebounceTimer.Start();
             });
         }
-
-
         private AppWindow GetAppWindowForCurrentWindow()
         {
             IntPtr hWnd = WindowNative.GetWindowHandle(this);
@@ -513,23 +510,175 @@ namespace Clip
             await ExportClipsFromJsonAsync(json);
         }
 
+        private async void ImportJsonButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (FolderTreeView.RootNodes.Count > 0)
+            {
+                var confirm = new ContentDialog
+                {
+                    Title = "Overwrite Current Structure?",
+                    Content = "Importing will delete your current folders and clips. Do you want to continue?",
+                    PrimaryButtonText = "Import",
+                    CloseButtonText = "Cancel",
+                    XamlRoot = this.Content.XamlRoot
+                };
+
+                var result = await confirm.ShowAsync();
+                if (result != ContentDialogResult.Primary)
+                    return;
+            }
+            string json = await PickAndReadJsonFileAsync();
+            if (string.IsNullOrEmpty(json))
+            {
+                await ShowInfoDialog("Import Failed", "No JSON file was selected or the file was empty.");
+                return;
+            }
+            ClearCurrentStructure();
+
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
+
+                foreach (var folderEntry in parsed)
+                {
+                    string folderName = folderEntry.Key;
+                    JsonElement folderContent = folderEntry.Value;
+
+                    if (string.IsNullOrWhiteSpace(folderName) || folderContent.ValueKind != JsonValueKind.Object)
+                        continue;
+
+                    if (Folders.ContainsKey(folderName))
+                        continue;
+
+                    var folder = new Folder { Name = folderName };
+                    Folders.Add(folderName, folder);
+
+                    var folderNode = new TreeViewNode
+                    {
+                        Content = folder,
+                        IsExpanded = true
+                    };
+                    FolderTreeView.RootNodes.Add(folderNode);
+
+                    foreach (var inner in folderContent.EnumerateObject())
+                    {
+                        string key = inner.Name;
+                        var value = inner.Value;
+
+                        if (value.ValueKind != JsonValueKind.Object)
+                            continue;
+                        if (value.TryGetProperty("begin", out var beginProp) &&
+                            value.TryGetProperty("end", out var endProp))
+                        {
+                            string begin = beginProp.GetString() ?? "0:00";
+                            string end = endProp.GetString() ?? "0:00";
+                            string title = key;
+
+                            if (IsValidTitle(title) && !folder.Clips.Any(c => c.Title.Equals(title, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                folder.Clips.Add(new Clip
+                                {
+                                    Title = title,
+                                    Begin = begin,
+                                    End = end
+                                });
+                            }
+                        }
+                        else
+                        {
+                            var subFolder = new Folder { Name = key, isCompilation = true };
+                            folder.SubFolders.Add(subFolder);
+
+                            var subNode = new TreeViewNode
+                            {
+                                Content = subFolder,
+                                IsExpanded = true
+                            };
+                            folderNode.Children.Add(subNode);
+
+                            foreach (var clipEntry in value.EnumerateObject())
+                            {
+                                string clipTitle = clipEntry.Name;
+                                var clipVal = clipEntry.Value;
+
+                                if (clipVal.TryGetProperty("begin", out var subBegin) &&
+                                    clipVal.TryGetProperty("end", out var subEnd))
+                                {
+                                    string begin = subBegin.GetString() ?? "0:00";
+                                    string end = subEnd.GetString() ?? "0:00";
+
+                                    if (IsValidTitle(clipTitle) && !subFolder.Clips.Any(c => c.Title.Equals(clipTitle, StringComparison.OrdinalIgnoreCase)))
+                                    {
+                                        subFolder.Clips.Add(new Clip
+                                        {
+                                            Title = clipTitle,
+                                            Begin = begin,
+                                            End = end
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                UpdateFolderList();
+
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("Error while importing JSON: " + ex.Message);
+                await ShowInfoDialog("Import Error", "Failed to parse or apply the JSON structure.");
+            }
+        }
+        private void ClearCurrentStructure()
+        {
+            FolderTreeView.RootNodes.Clear();
+            Folders.Clear();
+            UpdateFolderList();
+        }
+        private async Task<string> PickAndReadJsonFileAsync()
+        {
+            var picker = new FileOpenPicker();
+            picker.SuggestedStartLocation = PickerLocationId.DocumentsLibrary;
+            picker.FileTypeFilter.Add(".json");
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+            StorageFile file = await picker.PickSingleFileAsync();
+            if (file == null)
+                return null;
+
+            try
+            {
+                return await FileIO.ReadTextAsync(file);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to read file: {ex.Message}");
+                return null;
+            }
+        }
         public class Folder
         {
             public string Name { get; set; }
             public List<Clip> Clips { get; set; } = new List<Clip>(); 
             public List<Folder> SubFolders { get; set; } = new List<Folder>();
             public string Display => $"{Name}";
+            public bool isCompilation = false;
+            public SolidColorBrush BorderBrush => isCompilation
+            ? new SolidColorBrush(Windows.UI.Color.FromArgb(255, 184, 115, 51))   
+            : new SolidColorBrush(Windows.UI.Color.FromArgb(255, 70, 130, 180));
         }
-
         public class Clip
         {
             public string Title { get; set; }
             public string Begin { get; set; }
             public string End { get; set; }
             public string Display => $"🎬 {Title}";
+            public SolidColorBrush BorderBrush => new SolidColorBrush(Windows.UI.Color.FromArgb(255, 218, 165, 32));
         }
         public Dictionary<string, Folder> Folders { get; set; } = new Dictionary<string, Folder>();
-
         private async void Rename_Click(object sender, RoutedEventArgs e)
         {
             if (sender is not MenuFlyoutItem menuItem || menuItem.Tag is not TreeViewNode node)
@@ -558,36 +707,48 @@ namespace Clip
 
             UpdateFolderList();
         }
-
-
         private async Task RenameClip(TreeViewNode node, Clip clip, string newName)
         {
-            // Find the folder that contains this clip:
             foreach (var folder in Folders.Values)
             {
-                if (folder.Clips.Contains(clip))
+                if (TryRenameClipInFolder(folder, clip, newName))
                 {
-                    // Check for duplicate in the same folder or subfolders:
-                    var sameLevel = folder.Clips.Concat(folder.SubFolders.SelectMany(sf => sf.Clips));
-                    if (sameLevel.Any(c => c.Title.Equals(newName, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        await ShowInfoDialog("Duplicate Clip", $"A clip with the name \"{newName}\" already exists.");
-                        return;
-                    }
-
-                    clip.Title = newName;
-                    node.Content = clip; // Just assign again to refresh binding if needed
+                    node.Content = clip;
                     return;
                 }
             }
 
             await ShowInfoDialog("Rename Failed", "Clip not found.");
         }
+        private bool TryRenameClipInFolder(Folder folder, Clip clip, string newName)
+        {
+            var existingClip = folder.Clips.FirstOrDefault(c => c == clip);
+            if (existingClip != null)
+            {
+                bool duplicate = folder.Clips.Concat(folder.SubFolders.SelectMany(sf => sf.Clips))
+                    .Any(c => c != clip && c.Title.Equals(newName, StringComparison.OrdinalIgnoreCase));
 
+                if (duplicate)
+                {
+                    ShowInfoDialog("Duplicate Clip", $"A clip with the name \"{newName}\" already exists.").Wait();
+                    return false;
+                }
+
+                clip.Title = newName;
+                return true;
+            }
+
+            foreach (var sub in folder.SubFolders)
+            {
+                if (TryRenameClipInFolder(sub, clip, newName))
+                    return true;
+            }
+
+            return false;
+        }
         private async Task RenameFolderOrCompilation(TreeViewNode node, Folder folder, string newName)
         {
-            // For top-level folder:
-            if (Folders.ContainsKey(folder.Name))
+            if (Folders.TryGetValue(folder.Name, out var topLevelFolder) && topLevelFolder == folder)
             {
                 if (Folders.ContainsKey(newName))
                 {
@@ -602,25 +763,41 @@ namespace Clip
                 return;
             }
 
-            // For subfolders inside folders:
-            foreach (var parentFolder in Folders.Values)
+            foreach (var parent in Folders.Values)
             {
-                var match = parentFolder.SubFolders.FirstOrDefault(sf => sf == folder);
-                if (match != null)
+                if (TryRenameCompilation(parent, folder, newName))
                 {
-                    if (parentFolder.SubFolders.Any(sf => sf.Name == newName))
-                    {
-                        await ShowInfoDialog("Duplicate Compilation", $"A compilation named \"{newName}\" already exists in this folder.");
-                        return;
-                    }
-
-                    folder.Name = newName;
                     node.Content = folder;
                     return;
                 }
             }
-        }
 
+            await ShowInfoDialog("Rename Failed", "Folder or Compilation not found.");
+        }
+        private bool TryRenameCompilation(Folder parent, Folder target, string newName)
+        {
+            var match = parent.SubFolders.FirstOrDefault(sf => sf == target);
+            if (match != null)
+            {
+                bool duplicate = parent.SubFolders.Any(sf => sf != target && sf.Name.Equals(newName, StringComparison.OrdinalIgnoreCase));
+                if (duplicate)
+                {
+                    ShowInfoDialog("Duplicate Compilation", $"A compilation named \"{newName}\" already exists in this folder.").Wait();
+                    return false;
+                }
+
+                target.Name = newName;
+                return true;
+            }
+
+            foreach (var sub in parent.SubFolders)
+            {
+                if (TryRenameCompilation(sub, target, newName))
+                    return true;
+            }
+
+            return false;
+        }
         private async Task<string> PromptForRename(string oldName)
         {
             var dialog = new ContentDialog
@@ -640,9 +817,12 @@ namespace Clip
 
         private async void Delete_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is MenuFlyoutItem menuItem && menuItem.Tag is TreeViewNode node)
+           
+            if (sender is MenuFlyoutItem menuItem && menuItem.Tag is TreeViewNode target)
             {
-                string itemName = node.Content?.ToString() ?? "";
+                string itemName = target.Content is Clip c ? c.Title :
+                                  target.Content is Folder f ? f.Name :
+                                  "Unknown Item";
 
                 var confirmDialog = new ContentDialog
                 {
@@ -657,13 +837,13 @@ namespace Clip
                 if (result != ContentDialogResult.Primary)
                     return;
 
-                if (itemName.StartsWith("🎬"))
+                if (target.Content is Clip clip)
                 {
-                    await DeleteClipByName(itemName);
+                    await DeleteClip(clip);
                 }
-                else
+                else if (target.Content is Folder folder)
                 {
-                    await DeleteFolderOrCompilationByName(itemName);
+                    await DeleteFolderOrCompilation(folder);
                 }
 
                 UpdateFolderList();
@@ -672,44 +852,53 @@ namespace Clip
             {
                 await ShowInfoDialog("Error", "Could not identify the selected item to delete.");
             }
+
         }
-
-
-        private async Task DeleteClipByName(string itemName)
+        private async Task DeleteClip(Clip targetClip)
         {
-            string clipTitle = itemName.Replace("🎬 ", "").Split('(')[0].Trim();
+            bool removed = false;
 
             foreach (var folder in Folders.Values)
             {
-                if (TryRemoveClipFromFolder(folder, clipTitle))
-                    return;
+                if (TryRemoveClipObject(folder, targetClip))
+                {
+                    removed = true;
+                    break;
+                }
             }
 
-            await ShowInfoDialog("Deletion Failed", "Clip could not be found.");
+            if (!removed)
+                await ShowInfoDialog("Deletion Failed", "Clip could not be found.");
         }
-
-        private async Task DeleteFolderOrCompilationByName(string name)
+        private bool TryRemoveClipObject(Folder folder, Clip target)
         {
-            if (Folders.ContainsKey(name))
+            if (folder.Clips.Remove(target))
+                return true;
+
+            foreach (var sub in folder.SubFolders)
             {
-                Folders.Remove(name);
+                if (TryRemoveClipObject(sub, target))
+                    return true;
+            }
+
+            return false;
+        }
+        private async Task DeleteFolderOrCompilation(Folder folder)
+        {
+            if (Folders.ContainsKey(folder.Name))
+            {
+                Folders.Remove(folder.Name);
                 return;
             }
 
-            foreach (var folder in Folders.Values)
+            foreach (var parent in Folders.Values)
             {
-                var match = folder.SubFolders.FirstOrDefault(sf => sf.Name == name);
-                if (match != null)
-                {
-                    folder.SubFolders.Remove(match);
+                if (parent.SubFolders.Remove(folder))
                     return;
-                }
             }
 
             await ShowInfoDialog("Deletion Failed", "Folder or Compilation could not be found.");
         }
-
-
         private bool TryRemoveClipFromFolder(Folder folder, string title)
         {
             var match = folder.Clips.FirstOrDefault(c => c.Title == title);
@@ -727,7 +916,6 @@ namespace Clip
 
             return false;
         }
-
         private void FolderTreeView_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
         {    
             var node = args.InvokedItem as TreeViewNode;
@@ -819,6 +1007,7 @@ namespace Clip
             }
             return node;
         }
+
         private async void CreateFolder_Click(object sender, RoutedEventArgs e)
         {
             var inputDialog = new ContentDialog
@@ -1072,7 +1261,7 @@ namespace Clip
 
                 break;
             }
-            Folders[selectedFolder].SubFolders.Add(new Folder { Name = compilationName });
+            Folders[selectedFolder].SubFolders.Add(new Folder { Name = compilationName, isCompilation=true });
             UpdateFolderList();
         }
         private async Task DeleteFolder()
